@@ -31,23 +31,19 @@ struct hashed_page_table
 
     // Spinlock chosen for less overhead compared to struct lock
     // Necessary for concurrency management between processes or even threads in the same process
-    struct spinlock hpt_lock;
+    struct spinlock *hpt_lock;
 }
 
 struct hpt_entry
 {
-    // Physical frame number
+    // Physical frame number with the 12 bit offset
     int frame_number;
 
-    // virtual page number
+    // virtual page number with the 12 bit offset
     int page_number;
 
     // This is the process ID which can be the address space pointer
     pid_t pid;
-
-    // Permission of the frame e.g: read/write access, global, etc...
-    // the lower 12 bits of the paddr
-    int permissions;
 
     // The chain_index should provide the index of the array if chain exists
     // otherwise should be -1
