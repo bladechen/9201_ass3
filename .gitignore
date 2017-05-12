@@ -34,3 +34,13 @@ tags
 # Debug files
 *.dSYM/
 *.su
+build
+.depend
+defs.mk
+kern/compile/*
+*.o
+TAGS
+tags
+root
+.*project
+.settings
