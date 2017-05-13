@@ -39,6 +39,7 @@
 
 #include <machine/vm.h>
 #include <types.h>
+#include <pagetable.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -74,7 +75,7 @@ enum  E_PAGETABLE_ENTRY_STATUS
     PAGETABLE_ENTRY_INSWAP = 2,
 };
 
-static inline paddr_t pageentry_paddr(struct pagetable_entry* entry)
+static inline paddr_t pageentry_paddr(struct hpt_entry* entry)
 {
     return (entry->paddr) & PAGE_FRAME;
 }
