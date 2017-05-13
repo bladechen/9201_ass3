@@ -38,6 +38,7 @@ void init_page_table( void )
 
     // 2 x ram_size
     hashtable_size = 2*number_of_frames;
+
     // Allocate for the hpt_entries array, kmalloc will call ram_stealmem if the vm bootstrap hasnt been complete
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
 
@@ -117,24 +118,30 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval )
 }
 
 /* 
-    These 3 functions take and entry and find out the permissions and other meta data
+    These 4 functions take and entry and find out the permissions and other meta data
     of the entry
    */
+
+bool is_valid( const struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    if ( (pte->paddr & GLOBALMASK) == VALIDMASK )
+        return true;
+    return false;
+}
 bool is_global( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     if ( (pte->paddr & GLOBALMASK) == GLOBALMASK )
         return true;
-    else
-        return false;
+    return false;
 }
 bool is_dirty( const  struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     if ( (pte->paddr & DIRTYMASK) == DIRTYMASK )
         return true;
-    else
-        return false;
+    return false;
 
 }
 bool is_non_cacheable( const struct hpt_entry* pte )
@@ -142,10 +149,34 @@ bool is_non_cacheable( const struct hpt_entry* pte )
     KASSERT(pte != NULL);
     if ( (pte->paddr & NCACHEMASK) == NCACHEMASK )
         return true;
-    else
-        return false;
+    return false;
 
 }
+
+void set_valid( struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    pte->paddr |= VALIDMASK;
+}
+
+void set_global( struct hpt_entry* pte)
+{
+    KASSERT(pte != NULL);
+    pte->paddr |= GLOBALMASK;
+}
+
+void set_dirty( struct hpt_entry* pte)
+{
+    KASSERT(pte != NULL);
+    pte->paddr |= DIRTYMASK;
+}
+
+void set_noncachable( struct hpt_entry* pte)
+{
+    KASSERT(pte != NULL);
+    pte->paddr |= DIRTYMASK;
+}
+
 // Struct to get the entries for the TLB
 // Should return error code if not successful
 int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )

@@ -81,9 +81,15 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval );
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
    */
+bool is_valid( const struct hpt_entry* pte );
 bool is_global( const struct hpt_entry* pte );
 bool is_dirty( const struct hpt_entry* pte );
 bool is_non_cacheable( const struct hpt_entry* pte );
+
+void set_valid( struct hpt_entry* pte );
+void set_global( struct hpt_entry* pte );
+void set_dirty( struct hpt_entry* pte );
+void set_noncachable( struct hpt_entry* pte );
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
