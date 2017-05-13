@@ -1,13 +1,14 @@
 
 #include <pagetable.h>
+#include <vm.h>
+#include <lib.h>
 
-#define ENOPTE -1
-
+#define ENOPTE 4
 // Global structs to define
 
 static struct hashed_page_table *hpt = NULL;
-static unsigned int hashtable_size = 0;
-static void * emptypointer = NULL;
+static int hashtable_size = 0;
+static const void *emptypointer = NULL;
 
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address (which is what it acts on)
@@ -15,46 +16,81 @@ static void * emptypointer = NULL;
 
     I think this should be static as its internal the the page table...
 */
-static int hash( vaddr_t vaddr )
+static int hash( vaddr_t vaddr , pid_t pid )
 {
-   if ( vaddr == 0 )
-       return -1;
-
+    (void) pid;
+    if ( vaddr == 0 )
+        return -1;
     return 1;
-}
-
-// helper function to set the pointer to a global free pointer
-// SHOULD ONLY BE USED AFTER emptypointer has been inited!!!
-static void set_pointer_free(void * addr)
-{
-    (void) addr;
-    addr = emptypointer;
 }
 
 // this initialises the page table
 void init_page_table( void )
 {
     // no need to lock here
-    
-    // Set global free pointer to something
+    ram_size = ram_getsize();
+    KASSERT( ram_size > 0 );
 
-    // allocate the memory for the hashed_page_table which is fixed to 
+    // allocate the memory for the hashed_page_table 
+    hpt = (struct hashed_page_table *) kmalloc(sizeof(*hpt));
+
+    int number_of_frames = ram_size/PAGE_SIZE;
+
     // 2 x ram_size
-    hashtable_size = 2*ram_size; 
+    hashtable_size = 2*number_of_frames;
+    // Allocate for the hpt_entries array, kmalloc will call ram_stealmem if the vm bootstrap hasnt been complete
+    hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
 
     // set all values hpt_entries (vaddr and paddr) to point to global free pointer
-    uint32_t i = 0;
+    int i = 0;
     for (i = 0; i<hashtable_size; i++)
     {
-        set_pointer_free( &(hpt->hpt_entry[i].vaddr) );
-        set_pointer_free( &(hpt->hpt_entry[i].paddr) );
+        // Virtual addrs are nulls
+        hpt->hpt_entry[i].vaddr = (vaddr_t) emptypointer;
+        // Frames are nulls
+        hpt->hpt_entry[i].paddr = (paddr_t) emptypointer;
+        // Next points to null
+        hpt->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
     }
+
+#ifdef DEBUGLOAD
     // set load to zero
     hpt->load = 0;
+#endif
 }
 
+// See if there are collisions with the hash index
+static bool is_colliding( vaddr_t vaddr , pid_t pid )
+{
+    int index = hash(vaddr,pid);
+    if ( hpt->hpt_entry[index].next == NULL )
+        return false;
+    return true;
+}
+
+static void store_in_table ( vaddr_t vaddr, pid_t pid, paddr_t paddr, int index )
+{
+    hpt->hpt_entry[index].vaddr = vaddr;
+    hpt->hpt_entry[index].paddr = paddr;
+    hpt->hpt_entry[index].pid = pid;
+    hpt->hpt_entry[index].next = NULL;
+}
 // To store an entry into the page table
-void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid );
+void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid )
+{
+    int index = hash(vaddr,pid);
+    KASSERT ( index > -1 );
+
+    if ( !is_colliding( vaddr , pid ) )
+    {
+        store_in_table (vaddr, pid, paddr, index );
+    }
+    else
+    {
+        struct hpt_entry *current = hpt->hpt_entry[index].next;
+        (void) current;
+    }
+}
 
 // Remove an entry from the hash table
 void remove_page_entry( vaddr_t vaddr, pid_t pid );
@@ -74,7 +110,7 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval )
         *retval = ENOPTE;
         return false;
     }
-    int index = hash(vaddr);
+    int index = hash(vaddr, pid );
     (void) index;
     (void) pid;
     return false;
@@ -84,38 +120,26 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval )
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
    */
-bool is_global( const struct hpt_entry* pte, int *retval )
+bool is_global( const struct hpt_entry* pte )
 {
-    if ( pte == NULL )
-    {
-        *retval = ENOPTE;
-        return false;
-    }
+    KASSERT(pte != NULL);
     if ( (pte->paddr & GLOBALMASK) == GLOBALMASK )
         return true;
     else
         return false;
 }
-bool is_dirty( const  struct hpt_entry* pte , int *retval )
+bool is_dirty( const  struct hpt_entry* pte )
 {
-     if ( pte == NULL )
-    {
-        *retval = ENOPTE;
-        return false;
-    }
+    KASSERT(pte != NULL);
     if ( (pte->paddr & DIRTYMASK) == DIRTYMASK )
         return true;
     else
         return false;
 
 }
-bool is_non_cacheable( const struct hpt_entry* pte , int *retval )
+bool is_non_cacheable( const struct hpt_entry* pte )
 {
-    if ( pte == NULL )
-    {
-        *retval = ENOPTE;
-        return false;
-    }
+    KASSERT(pte != NULL);
     if ( (pte->paddr & NCACHEMASK) == NCACHEMASK )
         return true;
     else
@@ -131,7 +155,7 @@ int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )
 
     if ( pte == NULL )
         return -1;
-    int index = hash(pte->vaddr);
+    int index = hash(pte->vaddr, pte->pid);
     (void) index;
     return -1;
 }

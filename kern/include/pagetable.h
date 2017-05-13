@@ -16,6 +16,8 @@
 #define VALIDMASK   (1<<9)
 #define GLOBALMASK  (1<<8)
 
+#define DEBUGLOAD 1
+
 // Date type for the process ID, is currently an int and can be changed later
 typedef int pid_t;
 
@@ -31,10 +33,10 @@ struct hashed_page_table
     // Or simply use a pointer to hpt_entry such that we can dynamically allocate it
     struct hpt_entry *hpt_entry;
     //struct hpt_entry hpt[NUMBEROFFRAMES]; // Just a representation for now
-
+#ifdef DEBUGLOAD
     // This int holds the number of populated entries in the HPT
     int load;
-
+#endif
     // Spinlock chosen for less overhead compared to struct lock
     // Necessary for concurrency management between processes or even threads in the same process
     struct spinlock *hpt_lock;
@@ -53,7 +55,7 @@ struct hpt_entry
 
     // The chain_index should provide the index of the array if chain exists
     // otherwise should be -1
-    int next;
+    struct hpt_entry *next;
 };
 
 // this initialises the page table
@@ -79,9 +81,9 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval );
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
    */
-bool is_global( const struct hpt_entry* pte , int *retval );
-bool is_dirty( const  struct hpt_entry* pte , int *retval );
-bool is_non_cacheable( const struct hpt_entry* pte , int *retval );
+bool is_global( const struct hpt_entry* pte );
+bool is_dirty( const struct hpt_entry* pte );
+bool is_non_cacheable( const struct hpt_entry* pte );
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
