@@ -7,6 +7,12 @@
 // Global structs to define
 
 static struct hashed_page_table *hpt = NULL;
+
+// This is the free list struct to be used in external chaining
+static struct hpt_entry *freelist = NULL;
+// Pointer to the head of the free list
+static struct hpt_entry *free_head = NULL;
+
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
 
@@ -36,11 +42,15 @@ void init_page_table( void )
 
     int number_of_frames = ram_size/PAGE_SIZE;
 
-    // 2 x ram_size
-    hashtable_size = 2*number_of_frames;
+    // The size of hashtable is only equal to the number of frames but
+    // freelist has the same number of entries as well
+    hashtable_size = number_of_frames;
 
     // Allocate for the hpt_entries array, kmalloc will call ram_stealmem if the vm bootstrap hasnt been complete
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
+
+    // This is the free list chain which should be initilised to chain to the other
+    freelist = kmalloc(hashtable_size * sizeof(struct hpt_entry));
 
     // set all values hpt_entries (vaddr and paddr) to point to global free pointer
     int i = 0;
@@ -52,7 +62,19 @@ void init_page_table( void )
         hpt->hpt_entry[i].paddr = (paddr_t) emptypointer;
         // Next points to null
         hpt->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
+
+        freelist[i].vaddr = (vaddr_t) emptypointer;
+        freelist[i].paddr = (paddr_t) emptypointer;
+
+        // Chain the freelist to the next entry one after the other
+        if( i != (hashtable_size - 1) )
+            freelist[i].next = &(freelist[i+1]);
+        else
+            freelist[i].next = NULL;
     }
+
+    // The free_head points to the first entry when initialised
+    free_head = &(freelist[0]);
 
 #ifdef DEBUGLOAD
     // set load to zero
@@ -93,14 +115,46 @@ void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid )
     }
 }
 
+
+/*
+   this is the FREE LIST MANAGEMENT SECTION
+static void add_to_freelist( struct hpt_entry* to_add )
+{
+    KASSERT( to_add != NULL );
+    // Chain to the head of the list
+    to_add->next = free_head;
+    // Update the free list pointer
+    free_head = to_add;
+}
+
+// Gets an entry from the freelist
+static struct hpt_entry* get_free_entry( void )
+{
+    if ( free_head == NULL );
+    // Error case TODO
+    else
+    {
+        // pop the first element and move freelist head to next element
+        struct hpt_entry *temp;
+        temp = free_head;
+        free_head = free_head->next;
+        return temp;
+    }
+}
+
+*/
+
+// TODO
 // Remove an entry from the hash table
 void remove_page_entry( vaddr_t vaddr, pid_t pid );
 
+// TODO
 // Gets the physical frame address in memory
 paddr_t get_frame( vaddr_t vaddr , pid_t pid );
 
+// TODO
 // Allocate a page and return the index 
-struct hpt_entry * allocate_page( int page_num );
+struct hpt_entry* allocate_page( int page_num );
 
 // Is this entry present in the hash table already?
 // O(1) to find out
@@ -129,6 +183,7 @@ bool is_valid( const struct hpt_entry* pte )
         return true;
     return false;
 }
+
 bool is_global( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
@@ -136,13 +191,13 @@ bool is_global( const struct hpt_entry* pte )
         return true;
     return false;
 }
+
 bool is_dirty( const  struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     if ( (pte->paddr & DIRTYMASK) == DIRTYMASK )
         return true;
     return false;
-
 }
 bool is_non_cacheable( const struct hpt_entry* pte )
 {
@@ -150,7 +205,6 @@ bool is_non_cacheable( const struct hpt_entry* pte )
     if ( (pte->paddr & NCACHEMASK) == NCACHEMASK )
         return true;
     return false;
-
 }
 
 void set_valid( struct hpt_entry* pte )
@@ -159,22 +213,22 @@ void set_valid( struct hpt_entry* pte )
     pte->paddr |= VALIDMASK;
 }
 
-void set_global( struct hpt_entry* pte)
+void set_global( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     pte->paddr |= GLOBALMASK;
 }
 
-void set_dirty( struct hpt_entry* pte)
+void set_dirty( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     pte->paddr |= DIRTYMASK;
 }
 
-void set_noncachable( struct hpt_entry* pte)
+void set_noncachable( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
-    pte->paddr |= DIRTYMASK;
+    pte->paddr |= NCACHEMASK;
 }
 
 // Struct to get the entries for the TLB
