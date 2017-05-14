@@ -16,6 +16,7 @@ static struct hpt_entry *free_head = NULL;
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
 
+static void construct_key( vaddr_t vaddr, pid_t pid , char* ptr );
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address (which is what it acts on)
     This function should return an integer index into the array of the hash table entries
@@ -27,6 +28,10 @@ static int hash( vaddr_t vaddr , pid_t pid )
     (void) pid;
     if ( vaddr == 0 )
         return -1;
+    char key[8];
+    construct_key(vaddr, pid, key);
+
+
     return 1;
 }
 
@@ -82,6 +87,18 @@ void init_page_table( void )
 #endif
 }
 
+// Helper function to construct the key for the hash function
+static void construct_key( vaddr_t vaddr, pid_t pid , char* ptr )
+{
+    int i;
+    for(i=0;i<8;i++)
+    {
+        if(i<4)
+            ptr[i] = ( vaddr >> i*8 ) & 0xff;
+        else
+            ptr[i] = ( pid >> (i-4)*8 ) & 0xff;
+    }
+}
 // See if there are collisions with the hash index
 static bool is_colliding( vaddr_t vaddr , pid_t pid )
 {
