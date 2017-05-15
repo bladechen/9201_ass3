@@ -9,14 +9,18 @@
 static struct hashed_page_table *hpt = NULL;
 
 // This is the free list struct to be used in external chaining
-static struct hpt_entry *freelist = NULL;
+static struct hashed_page_table *free_entries = NULL;
+
 // Pointer to the head of the free list
 static struct hpt_entry *free_head = NULL;
 
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
 
+// Prototypes defined to avoid compiler error
 static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr );
+static struct hpt_entry* get_free_entry( void );
+
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address (which is what it acts on)
     This function should return an integer index into the array of the hash table entries
@@ -28,7 +32,7 @@ static int hash( vaddr_t vaddr , pid_t pid )
     (void) pid;
     if ( vaddr == 0 )
         return -1;
-    char key[8];
+    unsigned char key[8];
     construct_key(vaddr, pid, key);
 
     return 1;
@@ -41,9 +45,16 @@ void init_page_table( void )
     ram_size = ram_getsize();
     KASSERT( ram_size > 0 );
 
+    DEBUG(DB_VM, "RAM SIZE is %d\n", ram_size);
     // allocate the memory for the hashed_page_table 
     hpt = (struct hashed_page_table *) kmalloc(sizeof(*hpt));
+    KASSERT(hpt != NULL);
 
+    // allocate the memory for the free entries for external chaining
+    free_entries = (struct hashed_page_table *) kmalloc(sizeof(*free_entries));
+    KASSERT(free_entries != NULL);
+
+    DEBUG(DB_VM, "Hash Page Table Initialised...\n");
     int number_of_frames = ram_size/PAGE_SIZE;
 
     // The size of hashtable is only equal to the number of frames but
@@ -52,9 +63,11 @@ void init_page_table( void )
 
     // Allocate for the hpt_entries array, kmalloc will call ram_stealmem if the vm bootstrap hasnt been complete
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
+    KASSERT(hpt->hpt_entry != NULL);
 
-    // This is the free list chain which should be initilised to chain to the other
-    freelist = kmalloc(hashtable_size * sizeof(struct hpt_entry));
+    // This is the free list chain which should be initilised to chain to next entry
+    free_entries->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
+    KASSERT(free_entries->hpt_entry != NULL);
 
     // set all values hpt_entries (vaddr and paddr) to point to global free pointer
     int i = 0;
@@ -67,22 +80,28 @@ void init_page_table( void )
         // Next points to null
         hpt->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
 
-        freelist[i].vaddr = (vaddr_t) emptypointer;
-        freelist[i].paddr = (paddr_t) emptypointer;
+        free_entries->hpt_entry[i].vaddr = (vaddr_t) emptypointer;
+        free_entries->hpt_entry[i].paddr = (paddr_t) emptypointer;
 
         // Chain the freelist to the next entry one after the other
-        if( i != (hashtable_size - 1) )
-            freelist[i].next = &(freelist[i+1]);
+        if( i < (hashtable_size - 1) )
+            free_entries->hpt_entry[i].next = &(free_entries->hpt_entry[i+1]);
         else
-            freelist[i].next = NULL;
+            free_entries->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
     }
 
     // The free_head points to the first entry when initialised
-    free_head = &(freelist[0]);
+    free_head = &(free_entries->hpt_entry[0]);
+
+    // Initialise locks
+    spinlock_init(hpt->hpt_lock);
+    spinlock_init(free_entries->hpt_lock);
 
 #ifdef DEBUGLOAD
     // set load to zero
     hpt->load = 0;
+    // set free list count to be maximum
+    free_entries->load = number_of_frames;
 #endif
 }
 
@@ -102,33 +121,52 @@ static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
 static bool is_colliding( vaddr_t vaddr , pid_t pid )
 {
     int index = hash(vaddr,pid);
+    spinlock_acquire(hpt->hpt_lock);
     if ( hpt->hpt_entry[index].next == NULL )
+    {
+        spinlock_release(hpt->hpt_lock);
         return false;
+    }
+    spinlock_release(hpt->hpt_lock);
     return true;
 }
 
-static void store_in_table ( vaddr_t vaddr, pid_t pid, paddr_t paddr, int index )
+// TODO does this need a lock ... ? come back to this
+static void store_in_table ( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_entry* hpt_ent )
 {
-    hpt->hpt_entry[index].vaddr = vaddr;
-    hpt->hpt_entry[index].paddr = paddr;
-    hpt->hpt_entry[index].pid = pid;
-    hpt->hpt_entry[index].next = NULL;
+    hpt_ent->vaddr = vaddr;
+    hpt_ent->paddr = paddr;
+    hpt_ent->pid = pid;
+    hpt_ent->next = NULL;
 }
 
+// TODO locks here
 // To store an entry into the page table
-void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid )
+void store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
 {
     int index = hash(vaddr,pid);
     KASSERT ( index > -1 );
 
     if ( !is_colliding( vaddr , pid ) )
-    {
-        store_in_table (vaddr, pid, paddr, index );
-    }
+        store_in_table (vaddr, pid, paddr, &(hpt->hpt_entry[index]) );
     else
     {
-        struct hpt_entry *current = hpt->hpt_entry[index].next;
-        (void) current;
+        // index pointer
+        struct hpt_entry *current = &(hpt->hpt_entry[index]);
+        // The chained pointer
+        struct hpt_entry *nextchained = hpt->hpt_entry[index].next;
+        // Free entry
+        struct hpt_entry *free = get_free_entry();
+
+        // TODO error case
+        // TODO When there are no more free nodes
+        // TODO to evict a page from memory and store in disk
+
+        // Store in table
+        store_in_table( vaddr, pid, paddr, free );
+        // link in the next chain
+        current->next = free;
+        free->next = nextchained;
     }
 }
 
@@ -144,22 +182,26 @@ static void add_to_freelist( struct hpt_entry* to_add )
     free_head = to_add;
 }
 
+*/
 // Gets an entry from the freelist
 static struct hpt_entry* get_free_entry( void )
 {
-    if ( free_head == NULL );
-    // Error case TODO
+    struct hpt_entry *temp;
+    spinlock_acquire(free_entries->hpt_lock);
+    if ( free_head == NULL )
+    {
+        temp = NULL;
+    }
     else
     {
         // pop the first element and move freelist head to next element
-        struct hpt_entry *temp;
         temp = free_head;
         free_head = free_head->next;
-        return temp;
     }
+    spinlock_release(free_entries->hpt_lock);
+    return temp;
 }
 
-*/
 
 // TODO
 // Remove an entry from the hash table
@@ -167,24 +209,54 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 // TODO
 // Gets the physical frame address in memory
-paddr_t get_frame( vaddr_t vaddr , pid_t pid );
+struct hpt_entry* get_frame( vaddr_t vaddr , pid_t pid );
 
 // TODO
 // Allocate a page and return the index 
 struct hpt_entry* allocate_page( int page_num );
 
+// wARNING this dosent have a lock the caller should have a lock around this!!!
+static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
+{
+   if ( (vaddr == current->vaddr) && (pid == current->pid) )
+       return true;
+
+   return false;
+}
+
+// TODO
 // Is this entry present in the hash table already?
 // O(1) to find out
-bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval )
+bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
-    if ( vaddr == 0 )
+    KASSERT(vaddr != 0);
+
+    int index = hash(vaddr, pid);
+    
+    spinlock_acquire(hpt->hpt_lock);
+    if ( hpt->hpt_entry[index].vaddr != 0 )
     {
-        *retval = ENOPTE;
-        return false;
+        if ( hpt->hpt_entry[index].pid == pid )
+        {
+            spinlock_release(hpt->hpt_lock);
+            return true;
+        }
+        else
+        {
+            struct hpt_entry* current = hpt->hpt_entry[index].next;
+            while( current != NULL)
+            {
+                // check if the vaddr and pid are the same
+                // if they are then return true
+                if( is_equal(vaddr,pid,current) )
+                {
+                    spinlock_release(hpt->hpt_lock);
+                    return true;
+                }
+            }
+        }
     }
-    int index = hash(vaddr, pid );
-    (void) index;
-    (void) pid;
+    spinlock_release(hpt->hpt_lock);
     return false;
 }
 
@@ -196,56 +268,83 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval )
 bool is_valid( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->paddr & GLOBALMASK) == VALIDMASK )
+    {
+        spinlock_release(hpt->hpt_lock);
         return true;
+    }
+    spinlock_release(hpt->hpt_lock);
     return false;
 }
 
 bool is_global( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->paddr & GLOBALMASK) == GLOBALMASK )
+    {
+        spinlock_release(hpt->hpt_lock);
         return true;
+    }
+    spinlock_release(hpt->hpt_lock);
     return false;
 }
 
 bool is_dirty( const  struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->paddr & DIRTYMASK) == DIRTYMASK )
+    {
+        spinlock_release(hpt->hpt_lock);
         return true;
+    }
+    spinlock_release(hpt->hpt_lock);
     return false;
 }
 bool is_non_cacheable( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->paddr & NCACHEMASK) == NCACHEMASK )
+    {
+        spinlock_release(hpt->hpt_lock);
         return true;
+    }
+    spinlock_release(hpt->hpt_lock);
     return false;
 }
 
 void set_valid( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     pte->paddr |= VALIDMASK;
+    spinlock_release(hpt->hpt_lock);
 }
 
 void set_global( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     pte->paddr |= GLOBALMASK;
+    spinlock_release(hpt->hpt_lock);
 }
 
 void set_dirty( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     pte->paddr |= DIRTYMASK;
+    spinlock_release(hpt->hpt_lock);
 }
 
 void set_noncachable( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     pte->paddr |= NCACHEMASK;
+    spinlock_release(hpt->hpt_lock);
 }
 
 // Struct to get the entries for the TLB

@@ -62,20 +62,20 @@ struct hpt_entry
 void init_page_table( void );
 
 // To store an entry into the page table
-void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid );
+void store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
 
 // Remove an entry from the hash table
 void remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 // Gets the physical frame address in memory
-paddr_t get_frame( vaddr_t vaddr , pid_t pid );
+struct hpt_entry*  get_frame( vaddr_t vaddr , pid_t pid );
 
 // Allocate a page and return the index 
 struct hpt_entry * allocate_page( int page_num );
 
 // Is this entry present in the hash table already?
 // O(1) to find out
-bool is_valid_virtual( vaddr_t vaddr , pid_t pid , int *retval );
+bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 
 /* 
     These 3 functions take and entry and find out the permissions and other meta data

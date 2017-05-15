@@ -1,6 +1,6 @@
 
 #include<hashlib.h>
-#include<types.h>
+#include<lib.h>
 
 static const uint32_t crc_table[256] =
 {
@@ -40,6 +40,9 @@ static const uint32_t crc_table[256] =
 
 uint32_t calculate_hash(unsigned char *ptr, int len, int mod)
 {
+    KASSERT(ptr != NULL);
+    KASSERT(len > 0);
+
     uint32_t index=0;
     while( len >= 0 )
     {
