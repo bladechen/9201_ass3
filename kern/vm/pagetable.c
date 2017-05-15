@@ -1,9 +1,11 @@
 
 #include <pagetable.h>
+#include <hashlib.h>
 #include <vm.h>
 #include <lib.h>
 
 #define ENOPTE 4
+#define HASHLENGTH 8
 // Global structs to define
 
 static struct hashed_page_table *hpt = NULL;
@@ -14,6 +16,7 @@ static struct hashed_page_table *free_entries = NULL;
 // Pointer to the head of the free list
 static struct hpt_entry *free_head = NULL;
 
+// hashtable_size should be initialised in the init function
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
 
@@ -23,20 +26,20 @@ static struct hpt_entry* get_free_entry( void );
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current );
 
 /*  Hash algorithm to calculate the value pair for the given key
-    Note the hash's key is the virtual page address (which is what it acts on)
+    Note the hash's key is the virtual page address and the process id (which is what it acts on)
     This function should return an integer index into the array of the hash table entries
-
-    I think this should be static as its internal the the page table...
 */
 static int hash( vaddr_t vaddr , pid_t pid )
 {
     (void) pid;
-    if ( vaddr == 0 )
-        return -1;
-    unsigned char key[8];
+    KASSERT(vaddr != 0);
+    unsigned char key[HASHLENGTH];
     construct_key(vaddr, pid, key);
+    
+    int index = calculate_hash(key, HASHLENGTH, hashtable_size);
 
-    return 1;
+    return index;
+    // return 1;
 }
 
 // this initialises the page table

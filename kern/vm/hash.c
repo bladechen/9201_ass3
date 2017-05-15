@@ -38,7 +38,7 @@ static const uint32_t crc_table[256] =
     0xb3667a2eL, 0xc4614ab8L, 0x5d681b02L, 0x2a6f2b94L, 0xb40bbe37L, 0xc30c8ea1L, 0x5a05df1bL, 0x2d02ef8dL
 };
 
-uint32_t calculate_hash(unsigned char *ptr, int len, int mod)
+uint32_t calculate_hash(const unsigned char *ptr, int len, int mod)
 {
     KASSERT(ptr != NULL);
     KASSERT(len > 0);

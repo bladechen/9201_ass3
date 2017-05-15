@@ -53,8 +53,7 @@ struct hpt_entry
     // This is the process ID which can be the address space pointer
     pid_t pid;
 
-    // The chain_index should provide the index of the array if chain exists
-    // otherwise should be -1
+    // Next pointer for the entries
     struct hpt_entry *next;
 };
 

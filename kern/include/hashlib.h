@@ -3,5 +3,5 @@
 
 #include<types.h>
 
-uint32_t calculate_hash(unsigned char *ptr, int len, int mod);
+uint32_t calculate_hash(const unsigned char *ptr, int len, int mod);
 #endif
