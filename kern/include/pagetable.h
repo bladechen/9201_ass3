@@ -68,10 +68,10 @@ void store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
 void remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 // Gets the physical frame address in memory
-struct hpt_entry*  get_frame( vaddr_t vaddr , pid_t pid );
+struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid );
 
 // Allocate a page and return the index 
-struct hpt_entry * allocate_page( int page_num );
+struct hpt_entry * allocate_page( void );
 
 // Is this entry present in the hash table already?
 // O(1) to find out

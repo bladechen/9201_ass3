@@ -20,6 +20,7 @@ static const void *emptypointer = NULL;
 // Prototypes defined to avoid compiler error
 static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr );
 static struct hpt_entry* get_free_entry( void );
+static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current );
 
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address (which is what it acts on)
@@ -118,7 +119,7 @@ static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
     }
 }
 // See if there are collisions with the hash index
-static bool is_colliding( vaddr_t vaddr , pid_t pid )
+static bool is_colliding( vaddr_t vaddr, pid_t pid )
 {
     int index = hash(vaddr,pid);
     spinlock_acquire(hpt->hpt_lock);
@@ -131,13 +132,18 @@ static bool is_colliding( vaddr_t vaddr , pid_t pid )
     return true;
 }
 
-// TODO does this need a lock ... ? come back to this
-static void store_in_table ( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_entry* hpt_ent )
+// WARNING no lock for this function, caller must have lock between this function
+static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_entry* hpt_ent )
 {
     hpt_ent->vaddr = vaddr;
     hpt_ent->paddr = paddr;
     hpt_ent->pid = pid;
     hpt_ent->next = NULL;
+}
+
+static void set_page_zero( struct hpt_entry* current )
+{
+    store_in_table( (vaddr_t) emptypointer,(pid_t) emptypointer,(paddr_t) emptypointer, current);
 }
 
 // TODO locks here
@@ -147,42 +153,53 @@ void store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
     int index = hash(vaddr,pid);
     KASSERT ( index > -1 );
 
+    spinlock_acquire(hpt->hpt_lock);
     if ( !is_colliding( vaddr , pid ) )
-        store_in_table (vaddr, pid, paddr, &(hpt->hpt_entry[index]) );
+        store_in_table(vaddr, pid, paddr, &(hpt->hpt_entry[index]) );
     else
     {
         // index pointer
         struct hpt_entry *current = &(hpt->hpt_entry[index]);
         // The chained pointer
         struct hpt_entry *nextchained = hpt->hpt_entry[index].next;
+
         // Free entry
+        // Get free entry from free list
+        // NESTED LOCK, TODO need to check if this can cause deadlock !!!
+        spinlock_acquire(free_entries->hpt_lock);
         struct hpt_entry *free = get_free_entry();
+        spinlock_release(free_entries->hpt_lock);
 
-        // TODO error case
         // TODO When there are no more free nodes
-        // TODO to evict a page from memory and store in disk
-
+        if ( free == NULL )
+        {
+            spinlock_release(hpt->hpt_lock);
+            return;
+        }
         // Store in table
         store_in_table( vaddr, pid, paddr, free );
         // link in the next chain
         current->next = free;
+        // What if free is NULL
         free->next = nextchained;
     }
+    spinlock_release(hpt->hpt_lock);
 }
-
 
 /*
    this is the FREE LIST MANAGEMENT SECTION
+*/
 static void add_to_freelist( struct hpt_entry* to_add )
 {
     KASSERT( to_add != NULL );
+    spinlock_acquire(free_entries->hpt_lock);
     // Chain to the head of the list
     to_add->next = free_head;
     // Update the free list pointer
     free_head = to_add;
+    spinlock_release(free_entries->hpt_lock);
 }
 
-*/
 // Gets an entry from the freelist
 static struct hpt_entry* get_free_entry( void )
 {
@@ -202,20 +219,100 @@ static struct hpt_entry* get_free_entry( void )
     return temp;
 }
 
-
-// TODO
 // Remove an entry from the hash table
-void remove_page_entry( vaddr_t vaddr, pid_t pid );
+void remove_page_entry( vaddr_t vaddr, pid_t pid )
+{
+    KASSERT(vaddr != 0);
+    // Get hash index
+    int index = hash(vaddr, pid);
+    struct hpt_entry *current = &(hpt->hpt_entry[index]);
+    struct hpt_entry *prev;
+    spinlock_acquire(hpt->hpt_lock);
 
-// TODO
+    // Check if the index matches the vaddr and pid
+    if ( is_equal(vaddr,pid,current) )
+    {
+        set_page_zero(current);
+        spinlock_release(hpt->hpt_lock);
+        return;
+    }
+    else
+    {
+        prev = current;
+        current = current->next;
+        while( current != NULL )
+        {
+            // check if the vaddr and pid are the same
+            // if they are then release that node to the free pool
+            if( is_equal(vaddr,pid,current) )
+            {
+                // Redirect the pointers
+                prev->next = current->next;
+
+                // set to zeros
+                // TODO this is not really necessary
+                // If its in the free pool the data dosent matter
+                set_page_zero(current); 
+
+                // Release node into free pool
+                add_to_freelist(current);
+
+                spinlock_release(hpt->hpt_lock);
+                return;
+            }
+            prev = current;
+            current = current->next;
+        }
+        spinlock_release(hpt->hpt_lock);
+        return;
+    }
+}
+
+// TODO needs to be REVIEWED
 // Gets the physical frame address in memory
-struct hpt_entry* get_frame( vaddr_t vaddr , pid_t pid );
+struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
+{
+    KASSERT(vaddr != 0);
+    // Get hash index
+    int index = hash(vaddr, pid);
+    struct hpt_entry* current = &(hpt->hpt_entry[index]);
+    spinlock_acquire(hpt->hpt_lock);
+
+    // Check if the index matches the vaddr and pid
+    if ( is_equal(vaddr,pid,current) )
+    {
+        spinlock_release(hpt->hpt_lock);
+        return current;
+    }
+    else
+    {
+        // Still have the lock
+        current = current->next;
+        while( current != NULL )
+        {
+            // check if the vaddr and pid are the same
+            // if they are then return current pointer
+            if( is_equal(vaddr,pid,current) )
+            {
+                spinlock_release(hpt->hpt_lock);
+                return current;
+            }
+            current = current->next;
+        }
+    }
+    // if we get here then current should be NULL
+    spinlock_release(hpt->hpt_lock);
+    return current;
+}
 
 // TODO
 // Allocate a page and return the index 
-struct hpt_entry* allocate_page( int page_num );
+struct hpt_entry* allocate_page( void )
+{
+    return NULL;
+}
 
-// wARNING this dosent have a lock the caller should have a lock around this!!!
+// WARNING this dosent have a lock the caller should have a lock around this!!!
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 {
    if ( (vaddr == current->vaddr) && (pid == current->pid) )
@@ -224,7 +321,6 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
    return false;
 }
 
-// TODO
 // Is this entry present in the hash table already?
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
@@ -232,7 +328,6 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
     KASSERT(vaddr != 0);
 
     int index = hash(vaddr, pid);
-    
     spinlock_acquire(hpt->hpt_lock);
     if ( hpt->hpt_entry[index].vaddr != 0 )
     {
@@ -244,7 +339,7 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
         else
         {
             struct hpt_entry* current = hpt->hpt_entry[index].next;
-            while( current != NULL)
+            while( current != NULL )
             {
                 // check if the vaddr and pid are the same
                 // if they are then return true
@@ -303,6 +398,7 @@ bool is_dirty( const  struct hpt_entry* pte )
     spinlock_release(hpt->hpt_lock);
     return false;
 }
+
 bool is_non_cacheable( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
@@ -354,8 +450,8 @@ int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )
     (void) tlb_hi;
     (void) tlb_lo;
 
-    if ( pte == NULL )
-        return -1;
+    KASSERT(pte!=NULL);
+
     int index = hash(pte->vaddr, pte->pid);
     (void) index;
     return -1;
