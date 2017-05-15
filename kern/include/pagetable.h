@@ -24,7 +24,7 @@ typedef int pid_t;
 struct hpt_entry;
 
 // This global variable must have get populated with the ramsize in the init function
-int ram_size;
+uint32_t ram_size;
 
 // Main global hashed page table struct
 struct hashed_page_table

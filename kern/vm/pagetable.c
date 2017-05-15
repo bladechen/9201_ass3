@@ -16,7 +16,7 @@ static struct hpt_entry *free_head = NULL;
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
 
-static void construct_key( vaddr_t vaddr, pid_t pid , char* ptr );
+static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr );
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address (which is what it acts on)
     This function should return an integer index into the array of the hash table entries
@@ -30,7 +30,6 @@ static int hash( vaddr_t vaddr , pid_t pid )
         return -1;
     char key[8];
     construct_key(vaddr, pid, key);
-
 
     return 1;
 }
@@ -88,7 +87,7 @@ void init_page_table( void )
 }
 
 // Helper function to construct the key for the hash function
-static void construct_key( vaddr_t vaddr, pid_t pid , char* ptr )
+static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
 {
     int i;
     for(i=0;i<8;i++)
@@ -115,6 +114,7 @@ static void store_in_table ( vaddr_t vaddr, pid_t pid, paddr_t paddr, int index 
     hpt->hpt_entry[index].pid = pid;
     hpt->hpt_entry[index].next = NULL;
 }
+
 // To store an entry into the page table
 void store_entry( paddr_t paddr, vaddr_t vaddr , pid_t pid )
 {
