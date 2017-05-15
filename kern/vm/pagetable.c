@@ -149,16 +149,21 @@ static void set_page_zero( struct hpt_entry* current )
     store_in_table( (vaddr_t) emptypointer,(pid_t) emptypointer,(paddr_t) emptypointer, current);
 }
 
-// TODO locks here
 // To store an entry into the page table
-void store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
+bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
 {
     int index = hash(vaddr,pid);
     KASSERT ( index > -1 );
 
     spinlock_acquire(hpt->hpt_lock);
     if ( !is_colliding( vaddr , pid ) )
+    {
         store_in_table(vaddr, pid, paddr, &(hpt->hpt_entry[index]) );
+
+        #ifdef DEBUGLOAD
+        hpt->load++;
+        #endif
+    }
     else
     {
         // index pointer
@@ -169,15 +174,13 @@ void store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
         // Free entry
         // Get free entry from free list
         // NESTED LOCK, TODO need to check if this can cause deadlock !!!
-        spinlock_acquire(free_entries->hpt_lock);
         struct hpt_entry *free = get_free_entry();
-        spinlock_release(free_entries->hpt_lock);
 
         // TODO When there are no more free nodes
         if ( free == NULL )
         {
             spinlock_release(hpt->hpt_lock);
-            return;
+            return false;
         }
         // Store in table
         store_in_table( vaddr, pid, paddr, free );
@@ -187,6 +190,7 @@ void store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
         free->next = nextchained;
     }
     spinlock_release(hpt->hpt_lock);
+    return true;
 }
 
 /*
@@ -200,6 +204,9 @@ static void add_to_freelist( struct hpt_entry* to_add )
     to_add->next = free_head;
     // Update the free list pointer
     free_head = to_add;
+    #ifdef DEBUGLOAD
+    free_entries->load++;
+    #endif
     spinlock_release(free_entries->hpt_lock);
 }
 
@@ -218,6 +225,9 @@ static struct hpt_entry* get_free_entry( void )
         temp = free_head;
         free_head = free_head->next;
     }
+    #ifdef DEBUGLOAD
+    free_entries->load--;
+    #endif
     spinlock_release(free_entries->hpt_lock);
     return temp;
 }
@@ -236,6 +246,9 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
     if ( is_equal(vaddr,pid,current) )
     {
         set_page_zero(current);
+        #ifdef DEBUGLOAD
+        hpt->load++;
+        #endif
         spinlock_release(hpt->hpt_lock);
         return;
     }
@@ -426,6 +439,7 @@ void set_valid( struct hpt_entry* pte )
 void set_global( struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
     pte->paddr |= GLOBALMASK;
     spinlock_release(hpt->hpt_lock);
 }
@@ -443,6 +457,38 @@ void set_noncachable( struct hpt_entry* pte )
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     pte->paddr |= NCACHEMASK;
+    spinlock_release(hpt->hpt_lock);
+}
+
+void reset_valid( struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr &= (~VALIDMASK);
+    spinlock_release(hpt->hpt_lock);
+}
+
+void reset_global( struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr &= (~GLOBALMASK);
+    spinlock_release(hpt->hpt_lock);
+}
+
+void reset_dirty( struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr &= (~DIRTYMASK);
+    spinlock_release(hpt->hpt_lock);
+}
+
+void reset_noncachable( struct hpt_entry* pte )
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr &= (~NCACHEMASK);
     spinlock_release(hpt->hpt_lock);
 }
 

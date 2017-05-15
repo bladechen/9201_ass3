@@ -61,7 +61,7 @@ struct hpt_entry
 void init_page_table( void );
 
 // To store an entry into the page table
-void store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
+bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
 
 // Remove an entry from the hash table
 void remove_page_entry( vaddr_t vaddr, pid_t pid );
@@ -89,6 +89,11 @@ void set_valid( struct hpt_entry* pte );
 void set_global( struct hpt_entry* pte );
 void set_dirty( struct hpt_entry* pte );
 void set_noncachable( struct hpt_entry* pte );
+
+void reset_valid( struct hpt_entry* pte );
+void reset_global( struct hpt_entry* pte );
+void reset_dirty( struct hpt_entry* pte );
+void reset_noncachable( struct hpt_entry* pte );
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
