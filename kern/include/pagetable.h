@@ -95,6 +95,11 @@ void reset_global( struct hpt_entry* pte );
 void reset_dirty( struct hpt_entry* pte );
 void reset_noncachable( struct hpt_entry* pte );
 
+// To set and reset a general mask in a pte for example 
+// mask = GLOBALMASK | DIRTYMASK | VALIDMASK
+void set_mask( struct hpt_entry* pte , uint32_t mask);
+void reset_mask( struct hpt_entry* pte , uint32_t mask);
+
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
 int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo );

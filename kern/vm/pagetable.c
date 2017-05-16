@@ -59,6 +59,8 @@ void init_page_table( void )
     KASSERT(free_entries != NULL);
 
     DEBUG(DB_VM, "Hash Page Table Initialised...\n");
+    // it should technically be round(ram_size/PAGE_SIZE) which is
+    // if ram_size == 4095 then number_of_frames = 1
     int number_of_frames = ram_size/PAGE_SIZE;
 
     // The size of hashtable is only equal to the number of frames but
@@ -125,27 +127,29 @@ static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
 static bool is_colliding( vaddr_t vaddr, pid_t pid )
 {
     int index = hash(vaddr,pid);
-    spinlock_acquire(hpt->hpt_lock);
-    if ( hpt->hpt_entry[index].next == NULL )
+    KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
+
+    if ( hpt->hpt_entry[index].next == (struct hpt_entry *) emptypointer )
     {
-        spinlock_release(hpt->hpt_lock);
         return false;
     }
-    spinlock_release(hpt->hpt_lock);
     return true;
 }
 
 // WARNING no lock for this function, caller must have lock between this function
 static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_entry* hpt_ent )
 {
+    KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     hpt_ent->vaddr = vaddr;
     hpt_ent->paddr = paddr;
     hpt_ent->pid = pid;
     hpt_ent->next = NULL;
 }
 
+// WARNING no lock for this function, caller must have lock between this function
 static void set_page_zero( struct hpt_entry* current )
 {
+    KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     store_in_table( (vaddr_t) emptypointer,(pid_t) emptypointer,(paddr_t) emptypointer, current);
 }
 
@@ -153,7 +157,6 @@ static void set_page_zero( struct hpt_entry* current )
 bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
 {
     int index = hash(vaddr,pid);
-    KASSERT ( index > -1 );
 
     spinlock_acquire(hpt->hpt_lock);
     if ( !is_colliding( vaddr , pid ) )
@@ -171,7 +174,6 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
         // The chained pointer
         struct hpt_entry *nextchained = hpt->hpt_entry[index].next;
 
-        // Free entry
         // Get free entry from free list
         // NESTED LOCK, TODO need to check if this can cause deadlock !!!
         struct hpt_entry *free = get_free_entry();
@@ -180,6 +182,7 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
         if ( free == NULL )
         {
             spinlock_release(hpt->hpt_lock);
+            // TODO this needs a *retval to be set to error no ENOMEM
             return false;
         }
         // Store in table
@@ -215,19 +218,15 @@ static struct hpt_entry* get_free_entry( void )
 {
     struct hpt_entry *temp;
     spinlock_acquire(free_entries->hpt_lock);
-    if ( free_head == NULL )
-    {
-        temp = NULL;
-    }
-    else
+    temp = free_head;
+    if ( free_head != NULL )
     {
         // pop the first element and move freelist head to next element
-        temp = free_head;
         free_head = free_head->next;
+        #ifdef DEBUGLOAD
+        free_entries->load--;
+        #endif
     }
-    #ifdef DEBUGLOAD
-    free_entries->load--;
-    #endif
     spinlock_release(free_entries->hpt_lock);
     return temp;
 }
@@ -235,7 +234,7 @@ static struct hpt_entry* get_free_entry( void )
 // Remove an entry from the hash table
 void remove_page_entry( vaddr_t vaddr, pid_t pid )
 {
-    KASSERT(vaddr != 0);
+    KASSERT(vaddr != (vaddr_t) emptypointer);
     // Get hash index
     int index = hash(vaddr, pid);
     struct hpt_entry *current = &(hpt->hpt_entry[index]);
@@ -331,10 +330,11 @@ struct hpt_entry* allocate_page( void )
 // WARNING this dosent have a lock the caller should have a lock around this!!!
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 {
-   if ( (vaddr == current->vaddr) && (pid == current->pid) )
-       return true;
+    KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
+    if ( (vaddr == current->vaddr) && (pid == current->pid) )
+        return true;
 
-   return false;
+    return false;
 }
 
 // Is this entry present in the hash table already?
@@ -492,6 +492,22 @@ void reset_noncachable( struct hpt_entry* pte )
     spinlock_release(hpt->hpt_lock);
 }
 
+void set_mask( struct hpt_entry* pte , uint32_t mask)
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr |= mask;
+    spinlock_release(hpt->hpt_lock);
+}
+
+void reset_mask( struct hpt_entry* pte , uint32_t mask)
+{
+    KASSERT(pte != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    pte->paddr &= (~mask);
+    spinlock_release(hpt->hpt_lock);
+}
+// TODO
 // Struct to get the entries for the TLB
 // Should return error code if not successful
 int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )
