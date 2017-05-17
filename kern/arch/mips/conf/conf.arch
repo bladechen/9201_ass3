@@ -61,6 +61,7 @@ machine mips file    arch/mips/thread/threadstart.S	# New thread startup
 #    tlb-mips32.S
 #
 
+machine mips file    arch/mips/vm/tlb.c
 machine mips file    arch/mips/vm/ram.c		# Physical memory accounting
 
 # This is included here rather than in conf.kern because

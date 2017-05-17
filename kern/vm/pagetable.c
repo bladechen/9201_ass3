@@ -333,7 +333,7 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
     KASSERT(current != NULL);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     // FIXME, vaddr current->vaddr lower 12bit
-    return ((vaddr == current->vaddr) && (pid == current->pid))
+    return ((vaddr == current->vaddr) && (pid == current->pid));
 }
 
 // Is this entry present in the hash table already?
