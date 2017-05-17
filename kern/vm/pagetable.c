@@ -35,7 +35,7 @@ static int hash( vaddr_t vaddr , pid_t pid )
     KASSERT(vaddr != 0);
     unsigned char key[HASHLENGTH];
     construct_key(vaddr, pid, key);
-    
+
     int index = calculate_hash(key, HASHLENGTH, hashtable_size);
 
     return index;
@@ -50,7 +50,7 @@ void init_page_table( void )
     KASSERT( ram_size > 0 );
 
     DEBUG(DB_VM, "RAM SIZE is %d\n", ram_size);
-    // allocate the memory for the hashed_page_table 
+    // allocate the memory for the hashed_page_table
     hpt = (struct hashed_page_table *) kmalloc(sizeof(*hpt));
     KASSERT(hpt != NULL);
 
@@ -267,7 +267,7 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
                 // set to zeros
                 // TODO this is not really necessary
                 // If its in the free pool the data dosent matter
-                set_page_zero(current); 
+                set_page_zero(current);
 
                 // Release node into free pool
                 add_to_freelist(current);
@@ -321,7 +321,7 @@ struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 }
 
 // TODO
-// Allocate a page and return the index 
+// Allocate a page and return the index
 struct hpt_entry* allocate_page( void )
 {
     return NULL;
@@ -330,11 +330,10 @@ struct hpt_entry* allocate_page( void )
 // WARNING this dosent have a lock the caller should have a lock around this!!!
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 {
+    KASSERT(current != NULL);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
-    if ( (vaddr == current->vaddr) && (pid == current->pid) )
-        return true;
-
-    return false;
+    // FIXME, vaddr current->vaddr lower 12bit
+    return ((vaddr == current->vaddr) && (pid == current->pid))
 }
 
 // Is this entry present in the hash table already?
@@ -371,7 +370,7 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
     return false;
 }
 
-/* 
+/*
     These 4 functions take and entry and find out the permissions and other meta data
     of the entry
    */
