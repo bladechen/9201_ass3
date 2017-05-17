@@ -13,11 +13,11 @@
 # The things that can be set here are documented in mk/os161.config.mk.
 #
 
-OSTREE=/Users/Ck/Documents/Masters_UNSW/S1_2017/COMP3231-OS/ass3/asst-src3/../root
+OSTREE=$(HOME)/cs3231/root
 PLATFORM=sys161
 MACHINE=mips
 COMPAT_CFLAGS= -DNEED_NTOHLL
 COMPAT_TARGETS=
 HOST_CC=gcc
 HOST_CFLAGS+= -DDECLARE_NTOHLL
-PYTHON_INTERPRETER=/usr/local/bin/python2.7
+PYTHON_INTERPRETER=/usr/bin/env python2.7
