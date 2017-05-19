@@ -17,6 +17,8 @@
 #define VALIDMASK   (1<<1)
 #define GLOBALMASK  (1<<0)
 
+#define CONTROLMASK 0x0000000f
+
 #define DEBUGLOAD 1
 
 // Date type for the process ID, is currently an int and can be changed later
@@ -77,18 +79,16 @@ bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
 // Remove an entry from the hash table
 int remove_page_entry( vaddr_t vaddr, pid_t pid );
 
-// Gets the physical frame address in memory
-struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid );
 
-// Allocate a page and return the index 
-struct hpt_entry * allocate_page( void );
+// Allocate a page and return the index
+// struct hpt_entry * allocate_page( void );
 
 // Is this entry present in the hash table already?
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 
 // TODO these functions need to check the control bits
-/* 
+/*
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
     These functions must only be called if the vaddrs and pids are vaid and exist in pagetable
@@ -96,17 +96,14 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 bool is_valid( vaddr_t vaddr , pid_t pid );
 bool is_global( vaddr_t vaddr , pid_t pid );
 bool is_dirty( vaddr_t vaddr , pid_t pid );
-bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
-
-// TODO change the proto to vaddr and pid instead of hpt_entry* pte
-// To set and reset a general mask in a pte for example 
+bool is_non_cacheable( vaddr_t vaddr , pid_t pid );  //TODO change the proto to vaddr and pid instead of hpt_entry* pte To set and reset a general mask in a pte for example
 // mask = GLOBALMASK | DIRTYMASK | VALIDMASK
 void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
-int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo );
+int get_tlb_entry(  vaddr_t vaddr , pid_t pid, int* tlb_hi, int* tlb_lo );
 
 // Initialise the hash table and set the fields to the initial values
 int init_hashtable( void );

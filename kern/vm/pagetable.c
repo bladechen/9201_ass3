@@ -187,20 +187,32 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
 
     // Get hash index
     int index = hash(vaddr, pid);
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *current = &(hpt->hpt_entry[index]);
     struct hpt_entry *prev;
-
-    spinlock_acquire(hpt->hpt_lock);
 
     // Check if the index matches the vaddr and pid
     if ( is_equal(vaddr,pid,current) )
     {
-        set_page_zero(current);
-        #ifdef DEBUGLOAD
-        hpt->load--;
-        #endif
-        spinlock_release(hpt->hpt_lock);
-        return 0;
+        if (current->next == NULL)
+        {
+            set_page_zero(current);
+
+#ifdef DEBUGLOAD
+            hpt->load--;
+#endif
+            spinlock_release(hpt->hpt_lock);
+            return 0;
+        }
+        else
+        {
+
+            memcpy(current, current->next, sizeof(*current));
+            current->next = current->next->next;
+            kfree(current);
+            spinlock_release(hpt->hpt_lock);
+            return 0;
+        }
     }
     else
     {
@@ -237,8 +249,9 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
 // TODO needs to be REVIEWED
 // TODO what about the control bits, should we check against that? I dont think so
 // Gets the physical frame address in memory
-struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
+static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 {
+    KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     KASSERT(vaddr != (vaddr_t) emptypointer);
 
     // Get the page number (upper 20 bits)
@@ -246,8 +259,8 @@ struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 
     // Get hash index
     int index = hash(vaddr, pid);
+    /* spinlock_acquire(hpt->hpt_lock); */
     struct hpt_entry* current = &(hpt->hpt_entry[index]);
-    spinlock_acquire(hpt->hpt_lock);
 
     // Check if the index entry matches the vaddr and pid
     if ( is_equal(vaddr,pid,current) )
@@ -272,16 +285,16 @@ struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
         }
     }
     // if we get here then current should be NULL
-    spinlock_release(hpt->hpt_lock);
+    /* spinlock_release(hpt->hpt_lock); */
     return current;
 }
 
-// TODO
-// Allocate a page and return the index
-struct hpt_entry* allocate_page( void )
-{
-    return NULL;
-}
+/* // TODO */
+/* // Allocate a page and return the index */
+/* struct hpt_entry* allocate_page( void ) */
+/* { */
+/*     return NULL; */
+/* } */
 
 // WARNING this dosent have a lock the caller should have a lock around this!!!
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
@@ -298,6 +311,8 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
+
+    vaddr = vaddr & ENTRYMASK;
     KASSERT(vaddr != (vaddr_t) emptypointer);
 
     // Get the page numbers (upper 20 bits)
@@ -338,10 +353,11 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 
 bool is_valid( vaddr_t vaddr , pid_t pid )
 {
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & VALIDMASK) == VALIDMASK )
     {
         spinlock_release(hpt->hpt_lock);
@@ -353,10 +369,11 @@ bool is_valid( vaddr_t vaddr , pid_t pid )
 
 bool is_global( vaddr_t vaddr , pid_t pid )
 {
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & GLOBALMASK) == GLOBALMASK )
     {
         spinlock_release(hpt->hpt_lock);
@@ -368,10 +385,11 @@ bool is_global( vaddr_t vaddr , pid_t pid )
 
 bool is_dirty( vaddr_t vaddr , pid_t pid )
 {
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & DIRTYMASK) == DIRTYMASK )
     {
         spinlock_release(hpt->hpt_lock);
@@ -383,10 +401,11 @@ bool is_dirty( vaddr_t vaddr , pid_t pid )
 
 bool is_non_cacheable( vaddr_t vaddr , pid_t pid )
 {
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & NCACHEMASK) == NCACHEMASK )
     {
         spinlock_release(hpt->hpt_lock);
@@ -398,38 +417,48 @@ bool is_non_cacheable( vaddr_t vaddr , pid_t pid )
 
 void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 {
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     pte->control |= mask;
     spinlock_release(hpt->hpt_lock);
 }
 
 void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 {
+
+    vaddr = vaddr & ENTRYMASK;
+    spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
     pte->control &= (~mask);
     spinlock_release(hpt->hpt_lock);
 }
 // TODO
 // Struct to get the entries for the TLB
 // Should return error code if not successful
-int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )
+int get_tlb_entry(vaddr_t vaddr, pid_t pid , int* tlb_hi, int* tlb_lo )
 {
-    (void) tlb_hi;
-    (void) tlb_lo;
 
-    KASSERT(pte!=NULL);
+    vaddr = vaddr & ENTRYMASK;
+    /* KASSERT((vaddr & (~ENTRYMASK)) == ) */
+    KASSERT(tlb_hi != NULL && tlb_lo != NULL);
+    spinlock_acquire(hpt->hpt_lock);
+    struct hpt_entry *pte = get_page(vaddr, pid);
+    if (pte == NULL)
+    {
+        spinlock_release(hpt->hpt_lock);
+        return -1;
+    }
 
-    //int index = hash(pte->vaddr, pte->pid);
     // Construct the hi entry for the tlb
-    *tlb_hi = (pte->vaddr << 12);
+    *tlb_hi = (pte->vaddr & ENTRYMASK);
     // Construct the lo entry for the tlb
-    *tlb_lo = (pte->paddr << 12) | ((pte->control & 0x0f) << 8);
+    *tlb_lo = ((pte->paddr &ENTRYMASK ) | ((pte->control & CONTROLMASK) << 8));
+    spinlock_release(hpt->hpt_lock);
     return 0;
 }
 
