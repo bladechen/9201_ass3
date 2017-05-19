@@ -85,9 +85,9 @@ static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
     for(i=0;i<8;i++)
     {
         if(i<4)
-            ptr[i] = ( vaddr >> i*8 ) & 0xff;
+            ptr[i] = ( vaddr >> (i*8) ) & 0xff;
         else
-            ptr[i] = ( pid >> (i-4)*8 ) & 0xff;
+            ptr[i] = ( pid >> ((i-4)*8) ) & 0xff;
     }
 }
 
@@ -288,14 +288,12 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 {
     KASSERT(current != NULL);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
-    // TODO Review
     // Fixed as vaddr is only the top 20 bits now
     return ((vaddr == current->vaddr) && (pid == current->pid));
 }
 
 // TODO We should check the valid bit for this as well ?
 // Is this entry present in the hash table already?
-// O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
     KASSERT(vaddr != (vaddr_t) emptypointer);
