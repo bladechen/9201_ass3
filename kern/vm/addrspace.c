@@ -51,77 +51,74 @@
 struct addrspace *
 as_create(void)
 {
-        struct addrspace *as;
+    struct addrspace *as;
 
-        as = kmalloc(sizeof(struct addrspace));
-        if (as == NULL) {
-                return NULL;
-        }
-
-        /*
-         * Initialize as needed.
-         */
-
-        return as;
+    as = kmalloc(sizeof(struct addrspace));
+    if (as == NULL) {
+            return NULL;
+    }
+    
+    as->list = NULL;
+    return as;
 }
 
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-        struct addrspace *newas;
+    struct addrspace *newas;
 
-        newas = as_create();
-        if (newas==NULL) {
-                return ENOMEM;
-        }
+    newas = as_create();
+    if (newas==NULL) {
+            return ENOMEM;
+    }
 
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 
-        (void)old;
+    (void)old;
 
-        *ret = newas;
-        return 0;
+    *ret = newas;
+    return 0;
 }
 
 void
 as_destroy(struct addrspace *as)
 {
-        /*
-         * Clean up as needed.
-         */
+    /*
+     * Clean up as needed.
+     */
 
-        kfree(as);
+    kfree(as);
 }
 
 void
 as_activate(void)
 {
-        struct addrspace *as;
+    struct addrspace *as;
 
-        as = proc_getas();
-        if (as == NULL) {
-                /*
-                 * Kernel thread without an address space; leave the
-                 * prior address space in place.
-                 */
-                return;
-        }
+    as = proc_getas();
+    if (as == NULL) {
+            /*
+             * Kernel thread without an address space; leave the
+             * prior address space in place.
+             */
+            return;
+    }
 
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 }
 
 void
 as_deactivate(void)
 {
-        /*
-         * Write this. For many designs it won't need to actually do
-         * anything. See proc.c for an explanation of why it (might)
-         * be needed.
-         */
+    /*
+     * Write this. For many designs it won't need to actually do
+     * anything. See proc.c for an explanation of why it (might)
+     * be needed.
+     */
 }
 
 /*
@@ -136,55 +133,79 @@ as_deactivate(void)
  */
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
-                 int readable, int writeable, int executable)
+             int readable, int writeable, int executable)
 {
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 
-        (void)as;
-        (void)vaddr;
-        (void)memsize;
-        (void)readable;
-        (void)writeable;
-        (void)executable;
-        return ENOSYS; /* Unimplemented */
+    struct as_region_metadata *temp;
+    temp = kmalloc(sizeof(*temp));
+    if (temp == NULL) {
+            return NULL;
+    }
+
+    temp->vaddr = vaddr;
+    temp->npages = convert_to_pages(memsize);
+    temp->rwxflag = readable | writeable | executable; 
+
+
+    if (as->list == NULL)
+    {
+        // If first region then init temp to point to itself
+        LIST_HEAD_INIT(temp->link);
+        as->list = temp;
+    }
+    else
+    {
+        // If not the first entry then add to the queue
+        lisk_add_tail( temp->link, as->list->link);
+    }
+    return ENOSYS; /* Unimplemented */
 }
 
 int
 as_prepare_load(struct addrspace *as)
 {
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 
-        (void)as;
-        return 0;
+    (void)as;
+    return 0;
 }
 
 int
 as_complete_load(struct addrspace *as)
 {
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 
-        (void)as;
-        return 0;
+    (void)as;
+    return 0;
 }
 
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-        /*
-         * Write this.
-         */
+    /*
+     * Write this.
+     */
 
-        (void)as;
+    (void)as;
 
-        /* Initial user-level stack pointer */
-        *stackptr = USERSTACK;
+    /* Initial user-level stack pointer */
+    *stackptr = USERSTACK;
 
-        return 0;
+    return 0;
 }
 
+int convert_to_pages(size_t memsize)
+{
+    int pgsize = 0;
+    if ( memsize != 0 )
+        pgsize = (memsize)/PAGE_SIZE;
+
+    return pgsize;
+}

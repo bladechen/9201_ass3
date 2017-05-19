@@ -12,9 +12,9 @@
 #define OFFSETMASK 0x00000fff
 
 #define READWRITE   (1<<4)
-#define NCACHEMASK  (1<<3)
-#define DIRTYMASK   (1<<2)
-#define VALIDMASK   (1<<1)
+#define NCACHEMASK  (TLBLO_NOCACHE >> 8)
+#define DIRTYMASK   (TLBLO_DIRTY >> 8)
+#define VALIDMASK   (TLBLO_VALID >> 8)
 #define GLOBALMASK  (1<<0)
 
 #define CONTROLMASK 0x0000000f
