@@ -38,6 +38,7 @@
 #include <vm.h>
 #include <proc.h>
 
+#include <list.h>
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -47,6 +48,8 @@
  * part of the VM subsystem.
  *
  */
+
+static int convert_to_pages(size_t memsize);
 
 struct addrspace *
 as_create(void)
@@ -141,25 +144,31 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
     struct as_region_metadata *temp;
     temp = kmalloc(sizeof(*temp));
     if (temp == NULL) {
-            return NULL;
+            return ENOMEM;
     }
 
-    temp->vaddr = vaddr;
-    temp->npages = convert_to_pages(memsize);
+    temp->region_vaddr = vaddr;
+    temp->npages = convert_to_pages(memsize);   
     temp->rwxflag = readable | writeable | executable; 
-
+    paddr_t paddr = get_free_frame();
 
     if (as->list == NULL)
     {
         // If first region then init temp to point to itself
-        LIST_HEAD_INIT(temp->link);
+        INIT_LIST_HEAD(&(temp->link));
         as->list = temp;
     }
     else
     {
         // If not the first entry then add to the queue
-        lisk_add_tail( temp->link, as->list->link);
+        list_add_tail( &(temp->link), &(as->list->link) );
     }
+
+    (void) paddr;
+    //int pid = (int) as;
+    //int retval = 0;
+    //int permission = temp->rwxflag; 
+    //store_entry (vaddr, pid, paddr); 
     return ENOSYS; /* Unimplemented */
 }
 
@@ -200,7 +209,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     return 0;
 }
 
-int convert_to_pages(size_t memsize)
+static int convert_to_pages(size_t memsize)
 {
     int pgsize = 0;
     if ( memsize != 0 )

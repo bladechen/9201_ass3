@@ -4,13 +4,14 @@
 
 #include <types.h>
 #include <synch.h>
+#include <mips/tlb.h>
 
 #define ASIDMASK  0x00000fc0
 
 #define ENTRYMASK 0xfffff000
 #define OFFSETMASK 0x00000fff
 
-#define SWAPMASK  	(1<<5)
+#define SWAPMASK    (1<<5)
 #define READWRITE   (1<<4)
 #define NCACHEMASK  (TLBLO_NOCACHE >> 8)
 #define DIRTYMASK   (TLBLO_DIRTY >> 8)

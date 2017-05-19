@@ -41,7 +41,7 @@
 
 struct vnode;
 
-
+#define IS_LOADING  (1<<3)
 /*
  * Address space - data structure associated with the virtual memory
  * space of a process.
@@ -55,6 +55,7 @@ struct as_region_metadata {
     // bit 0 is X  PF_X
     // bit 1 is W  PF_W
     // bit 2 is R  PF_R
+    // bit 3 is LOADING
     char rwxflag;
 
     // Advanced part for demand loading

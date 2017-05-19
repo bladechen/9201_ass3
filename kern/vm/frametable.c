@@ -18,7 +18,7 @@
 /* extern struct frame_entry* frame_table ; */
 /* extern int frametable_size ; */
 struct frame_entry* frame_table = NULL;
-
+int free_list_count;
 struct frame_entry* free_entry_list = NULL;
 int frametable_size = 0; // max index of frame_table
 
@@ -64,15 +64,6 @@ static void clear_frame(struct frame_entry* frame, int frame_status)
 
 }
 
-
-
-/* Note that this function returns a VIRTUAL address, not a physical
- * address
- * WARNING: this function gets called very early, before
- * vm_bootstrap().  You may wish to modify main.c to call your
- * frame table initialisation function, or check to see if the
- * frame table has been initialised and call ram_stealmem() otherwise.
- */
 static void free_frame_entry(struct frame_entry* entry)
 {
 
@@ -84,8 +75,9 @@ static void free_frame_entry(struct frame_entry* entry)
     entry->locked  = 0;
     entry->next_free = free_entry_list;
     free_entry_list = entry;
-    spinlock_release(&free_frame_list_lock);
 
+    free_list_count++; 
+    spinlock_release(&free_frame_list_lock);
     return;
 }
 
@@ -116,6 +108,7 @@ static struct frame_entry* find_free_frame(unsigned int npages)
     struct frame_entry* e = free_entry_list;
 
     free_entry_list = e->next_free;
+    free_list_count--;
     spinlock_release(&free_frame_list_lock);
     return e;
 }
@@ -129,11 +122,7 @@ static struct frame_entry* find_one_available_frame()
         return ret;
     }
     return NULL;
-
 }
-
-
-
 
 // exported
 vaddr_t alloc_kpages(unsigned int npages)
@@ -160,7 +149,7 @@ vaddr_t alloc_kpages(unsigned int npages)
         if (tmp == NULL)
         {
             spinlock_release(&frame_lock);
-            return ENOMEM;
+            return 0;
         }
 
         clear_frame(tmp, KERNEL_FRAME);
@@ -171,7 +160,7 @@ vaddr_t alloc_kpages(unsigned int npages)
     }
 }
 
-vaddr_t alloc_upages()
+static vaddr_t alloc_upages()
 {
     spinlock_acquire(&frame_lock);
     struct frame_entry*  tmp = find_one_available_frame();
@@ -185,8 +174,12 @@ vaddr_t alloc_upages()
 
     DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr);
     return PADDR_TO_KVADDR(tmp->p_addr);
+}
 
-
+// Returns a free frame from the frame table
+paddr_t get_free_frame(void)
+{
+    return KVADDR_TO_PADDR(alloc_upages());
 }
 // exported
 void free_kpages(vaddr_t addr)
@@ -202,7 +195,6 @@ void free_kpages(vaddr_t addr)
     free_frame_entry(frame_table + frametable_index);
     return;
 }
-
 
 // exported
 void init_frametable()
@@ -226,6 +218,8 @@ void init_frametable()
 
     DEBUG(DB_VM, "before init lo_addr: %x, hi_addr: %x, total_pagecount: %d, first available addr: %x\n", lo_addr, hi_addr, frametable_size, firstfree_addr);
 
+    free_list_count = 0;
+
     for (int i = frametable_size  - 1; i >= 0; i --)
     {
         frame_table[i].p_addr =  (paddr_t)(i * PAGE_SIZE);
@@ -241,7 +235,6 @@ void init_frametable()
             frame->locked = 0;
             frame->pinned = 0;
             frame->next_free = NULL;
-
         }
     }
     DEBUG(DB_VM, "after init lo_addr: 0x%x, hi_addr: 0x%x, total_pagecount: %d, first available addr: 0x%x\n", lo_addr, hi_addr, frametable_size, firstfree_addr);

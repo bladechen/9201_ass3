@@ -62,7 +62,6 @@ struct frame_entry
 
     volatile int locked; // when the corepage is allocating, this flag set to be true
 
-
     struct frame_entry* next_free;
 
     // K's additions
@@ -90,7 +89,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress);
 /* Allocate/free kernel heap pages (called by kmalloc/kfree) */
 vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
-vaddr_t alloc_upages(void);
+
+paddr_t get_free_frame(void);
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown(const struct tlbshootdown *);
