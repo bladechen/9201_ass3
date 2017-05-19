@@ -209,7 +209,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
 
             memcpy(current, current->next, sizeof(*current));
             current->next = current->next->next;
-            kfree(current);
+            kfree(current->next);
             spinlock_release(hpt->hpt_lock);
             return 0;
         }
@@ -246,7 +246,6 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
     }
 }
 
-// TODO needs to be REVIEWED
 // TODO what about the control bits, should we check against that? I dont think so
 // Gets the physical frame address in memory
 static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
@@ -310,11 +309,9 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
 
-    vaddr = vaddr & ENTRYMASK;
-    KASSERT(vaddr != (vaddr_t) emptypointer);
-
     // Get the page numbers (upper 20 bits)
     vaddr = vaddr & ENTRYMASK;
+    KASSERT(vaddr != (vaddr_t) emptypointer);
 
     int index = hash(vaddr, pid);
     spinlock_acquire(hpt->hpt_lock);

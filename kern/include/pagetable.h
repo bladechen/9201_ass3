@@ -6,11 +6,11 @@
 #include <synch.h>
 
 #define ASIDMASK  0x00000fc0
-#define SWAPMASK  0x00000001
 
 #define ENTRYMASK 0xfffff000
 #define OFFSETMASK 0x00000fff
 
+#define SWAPMASK  	(1<<5)
 #define READWRITE   (1<<4)
 #define NCACHEMASK  (TLBLO_NOCACHE >> 8)
 #define DIRTYMASK   (TLBLO_DIRTY >> 8)
@@ -62,7 +62,6 @@ struct hpt_entry
     // bits 3 - NCACHE
     // bits 4 - READ/WRITE for advanced
 
-    // TODO implement this
     char control;
 
     // Next pointer for the entries
@@ -87,7 +86,6 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid );
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 
-// TODO these functions need to check the control bits
 /*
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
@@ -96,7 +94,10 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 bool is_valid( vaddr_t vaddr , pid_t pid );
 bool is_global( vaddr_t vaddr , pid_t pid );
 bool is_dirty( vaddr_t vaddr , pid_t pid );
-bool is_non_cacheable( vaddr_t vaddr , pid_t pid );  //TODO change the proto to vaddr and pid instead of hpt_entry* pte To set and reset a general mask in a pte for example
+bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
+
+// TODO
+// Set and store in TLB the same way we should reset and store in TLB ?
 // mask = GLOBALMASK | DIRTYMASK | VALIDMASK
 void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
