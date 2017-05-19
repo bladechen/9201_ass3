@@ -36,7 +36,6 @@
  * You'll probably want to add stuff here.
  */
 
-
 #include <machine/vm.h>
 #include <types.h>
 #include <pagetable.h>
@@ -47,21 +46,24 @@
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
 // the underlying frame table status, the meta data of physical mem,
-enum E_COREPAGE_STATUS
+enum E_FRAME_STATUS
 {
-    COREPAGE_FREE = 0, // COREPAGE_FREE -> COREPAGE_SWAPPING_IN -> COREPAGE_USER or ....
-    COREPAGE_KERNEL = 1,
-    COREPAGE_USER = 2,
+    FREE_FRAME,
+    KERNEL_FRAME,
+    USER_FRAME,
 };
 
-struct core_page
+struct frame_entry
 {
-
-    void* owner; // same as the owner in the swap_page, if core_page belong to KERNEL, owner is set to be  NULL.
     paddr_t p_addr; // physical memory
-    long long access_ms; // last accessed time, precise to ms second. for assignment purpose only. by default, in this assignment, LRU is applied in finding page to be swapped out
-    int corepage_status;
+
+    void* owner; // same as the owner in the swap_page, if frame_entry belong to KERNEL, owner is set to be  NULL.
+    int frame_status;
+
     volatile int locked; // when the corepage is allocating, this flag set to be true
+
+
+    struct frame_entry* next_free;
 
     // K's additions
     bool pinned;
@@ -88,6 +90,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress);
 /* Allocate/free kernel heap pages (called by kmalloc/kfree) */
 vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
+vaddr_t alloc_upages(void);
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown(const struct tlbshootdown *);

@@ -25,9 +25,25 @@ void vm_bootstrap(void)
     /* } */
 
     /* init_coreswap(); */
+    DEBUG(DB_VM, "init_frametable ing....\n");
     init_frametable();
-    vaddr_t p = alloc_kpages(1);
-    DEBUG(DB_VM, "alloc %x\n", p);
+    DEBUG(DB_VM, "init_frametable finish\n");
+    /* vaddr_t p = alloc_kpages(1); */
+    /* DEBUG(DB_VM, "alloc 0x%x\n", p); */
+    /*  */
+    /* vaddr_t x = alloc_kpages(1); */
+    /* DEBUG(DB_VM, "alloc 0x%x\n", x); */
+    /*  */
+    /*  */
+    /* free_kpages(p); */
+    /*  */
+    /* free_kpages(x); */
+    /*  */
+    /* x = alloc_kpages(1); */
+    /* DEBUG(DB_VM, "alloc 0x%x\n", x); */
+    /* free_kpages(x); */
+
+
 
     return;
 
