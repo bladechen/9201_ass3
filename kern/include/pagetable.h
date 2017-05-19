@@ -11,10 +11,11 @@
 #define ENTRYMASK 0xfffff000
 #define OFFSETMASK 0x00000fff
 
-#define NCACHEMASK  (1<<11)
-#define DIRTYMASK   (1<<10)
-#define VALIDMASK   (1<<9)
-#define GLOBALMASK  (1<<8)
+#define READWRITE   (1<<4)
+#define NCACHEMASK  (1<<3)
+#define DIRTYMASK   (1<<2)
+#define VALIDMASK   (1<<1)
+#define GLOBALMASK  (1<<0)
 
 #define DEBUGLOAD 1
 
@@ -53,6 +54,15 @@ struct hpt_entry
     // This is the process ID which can be the address space pointer
     pid_t pid;
 
+    // bits 0 - GLOBAL
+    // bits 1 - VALID
+    // bits 2 - DIRTY
+    // bits 3 - NCACHE
+    // bits 4 - READ/WRITE for advanced
+
+    // TODO implement this
+    char control;
+
     // Next pointer for the entries
     struct hpt_entry *next;
 };
@@ -60,11 +70,12 @@ struct hpt_entry
 // this initialises the page table
 void init_page_table( void );
 
+// The called can supply the full 32 bits of the VADDR and PADDR to the following FUNCTIONs
 // To store an entry into the page table
-bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
+bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
 
 // Remove an entry from the hash table
-void remove_page_entry( vaddr_t vaddr, pid_t pid );
+int remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 // Gets the physical frame address in memory
 struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid );
@@ -76,29 +87,22 @@ struct hpt_entry * allocate_page( void );
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 
+// TODO these functions need to check the control bits
 /* 
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
+    These functions must only be called if the vaddrs and pids are vaid and exist in pagetable
    */
-bool is_valid( const struct hpt_entry* pte );
-bool is_global( const struct hpt_entry* pte );
-bool is_dirty( const struct hpt_entry* pte );
-bool is_non_cacheable( const struct hpt_entry* pte );
+bool is_valid( vaddr_t vaddr , pid_t pid );
+bool is_global( vaddr_t vaddr , pid_t pid );
+bool is_dirty( vaddr_t vaddr , pid_t pid );
+bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
 
-void set_valid( struct hpt_entry* pte );
-void set_global( struct hpt_entry* pte );
-void set_dirty( struct hpt_entry* pte );
-void set_noncachable( struct hpt_entry* pte );
-
-void reset_valid( struct hpt_entry* pte );
-void reset_global( struct hpt_entry* pte );
-void reset_dirty( struct hpt_entry* pte );
-void reset_noncachable( struct hpt_entry* pte );
-
+// TODO change the proto to vaddr and pid instead of hpt_entry* pte
 // To set and reset a general mask in a pte for example 
 // mask = GLOBALMASK | DIRTYMASK | VALIDMASK
-void set_mask( struct hpt_entry* pte , uint32_t mask);
-void reset_mask( struct hpt_entry* pte , uint32_t mask);
+void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
+void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
