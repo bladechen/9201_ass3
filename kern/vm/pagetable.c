@@ -129,7 +129,7 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
 {
     KASSERT(vaddr != (vaddr_t) emptypointer);
 
-    // Get the page and frame numbers (upper 20 bits)
+    // Get the page and frame numbers (upper 20 bits only)
     vaddr = vaddr & ENTRYMASK;
     paddr = paddr & ENTRYMASK;
 
@@ -139,7 +139,6 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
     if ( !is_colliding( vaddr , pid ) )
     {
         store_in_table(vaddr, pid, paddr, control, &(hpt->hpt_entry[index]) );
-
         #ifdef DEBUGLOAD
         hpt->load++;
         #endif
