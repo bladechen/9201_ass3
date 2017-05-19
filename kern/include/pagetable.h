@@ -91,17 +91,18 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 /* 
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
+    These functions must only be called if the vaddrs and pids are vaid and exist in pagetable
    */
-bool is_valid( const struct hpt_entry* pte );
-bool is_global( const struct hpt_entry* pte );
-bool is_dirty( const struct hpt_entry* pte );
-bool is_non_cacheable( const struct hpt_entry* pte );
+bool is_valid( vaddr_t vaddr , pid_t pid );
+bool is_global( vaddr_t vaddr , pid_t pid );
+bool is_dirty( vaddr_t vaddr , pid_t pid );
+bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
 
 // TODO change the proto to vaddr and pid instead of hpt_entry* pte
 // To set and reset a general mask in a pte for example 
 // mask = GLOBALMASK | DIRTYMASK | VALIDMASK
-void set_mask( struct hpt_entry* pte , uint32_t mask);
-void reset_mask( struct hpt_entry* pte , uint32_t mask);
+void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
+void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld

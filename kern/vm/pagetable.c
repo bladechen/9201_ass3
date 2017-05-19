@@ -127,6 +127,8 @@ static void set_page_zero( struct hpt_entry* current )
 // To store an entry into the page table
 bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
 {
+    KASSERT(vaddr != (vaddr_t) emptypointer);
+
     // Get the page and frame numbers (upper 20 bits)
     vaddr = vaddr & ENTRYMASK;
     paddr = paddr & ENTRYMASK;
@@ -238,7 +240,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
 // Gets the physical frame address in memory
 struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 {
-    KASSERT(vaddr != 0);
+    KASSERT(vaddr != (vaddr_t) emptypointer);
 
     // Get the page number (upper 20 bits)
     vaddr = vaddr & ENTRYMASK;
@@ -292,18 +294,19 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
     return ((vaddr == current->vaddr) && (pid == current->pid));
 }
 
+// TODO We should check the valid bit for this as well ?
 // Is this entry present in the hash table already?
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
-    KASSERT(vaddr != 0);
+    KASSERT(vaddr != (vaddr_t) emptypointer);
 
     // Get the page numbers (upper 20 bits)
     vaddr = vaddr & ENTRYMASK;
 
     int index = hash(vaddr, pid);
     spinlock_acquire(hpt->hpt_lock);
-    if ( hpt->hpt_entry[index].vaddr != 0 )
+    if ( hpt->hpt_entry[index].vaddr != (vaddr_t) emptypointer )
     {
         if ( hpt->hpt_entry[index].pid == pid )
         {
@@ -334,8 +337,10 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
     of the entry
    */
 
-bool is_valid( const struct hpt_entry* pte )
+bool is_valid( vaddr_t vaddr , pid_t pid )
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & VALIDMASK) == VALIDMASK )
@@ -347,8 +352,10 @@ bool is_valid( const struct hpt_entry* pte )
     return false;
 }
 
-bool is_global( const struct hpt_entry* pte )
+bool is_global( vaddr_t vaddr , pid_t pid )
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & GLOBALMASK) == GLOBALMASK )
@@ -360,8 +367,10 @@ bool is_global( const struct hpt_entry* pte )
     return false;
 }
 
-bool is_dirty( const  struct hpt_entry* pte )
+bool is_dirty( vaddr_t vaddr , pid_t pid )
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & DIRTYMASK) == DIRTYMASK )
@@ -373,8 +382,10 @@ bool is_dirty( const  struct hpt_entry* pte )
     return false;
 }
 
-bool is_non_cacheable( const struct hpt_entry* pte )
+bool is_non_cacheable( vaddr_t vaddr , pid_t pid )
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     if ( (pte->control & NCACHEMASK) == NCACHEMASK )
@@ -386,16 +397,20 @@ bool is_non_cacheable( const struct hpt_entry* pte )
     return false;
 }
 
-void set_mask( struct hpt_entry* pte , uint32_t mask)
+void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     pte->control |= mask;
     spinlock_release(hpt->hpt_lock);
 }
 
-void reset_mask( struct hpt_entry* pte , uint32_t mask)
+void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 {
+    struct hpt_entry *pte = get_page(vaddr, pid);
+
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
     pte->control &= (~mask);
@@ -411,8 +426,11 @@ int get_tlb_entry( struct hpt_entry* pte, int* tlb_hi, int* tlb_lo )
 
     KASSERT(pte!=NULL);
 
-    int index = hash(pte->vaddr, pte->pid);
-    (void) index;
-    return -1;
+    //int index = hash(pte->vaddr, pte->pid);
+    // Construct the hi entry for the tlb
+    *tlb_hi = (pte->vaddr << 12);
+    // Construct the lo entry for the tlb
+    *tlb_lo = (pte->paddr << 12) | ((pte->control & 0x0f) << 8);
+    return 0;
 }
 
