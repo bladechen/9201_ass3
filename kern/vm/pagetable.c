@@ -10,12 +10,6 @@
 
 static struct hashed_page_table *hpt = NULL;
 
-// This is the free list struct to be used in external chaining
-static struct hashed_page_table *free_entries = NULL;
-
-// Pointer to the head of the free list
-static struct hpt_entry *free_head = NULL;
-
 // hashtable_size should be initialised in the init function
 static int hashtable_size = 0;
 static const void *emptypointer = NULL;
@@ -31,11 +25,10 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current );
 */
 static int hash( vaddr_t vaddr , pid_t pid )
 {
-    (void) pid;
     KASSERT(vaddr != 0);
     unsigned char key[HASHLENGTH];
-    construct_key(vaddr, pid, key);
 
+    construct_key(vaddr, pid, key);
     int index = calculate_hash(key, HASHLENGTH, hashtable_size);
 
     return index;
@@ -54,26 +47,18 @@ void init_page_table( void )
     hpt = (struct hashed_page_table *) kmalloc(sizeof(*hpt));
     KASSERT(hpt != NULL);
 
-    // allocate the memory for the free entries for external chaining
-    free_entries = (struct hashed_page_table *) kmalloc(sizeof(*free_entries));
-    KASSERT(free_entries != NULL);
-
     DEBUG(DB_VM, "Hash Page Table Initialised...\n");
+
     // it should technically be round(ram_size/PAGE_SIZE) which is
     // if ram_size == 4095 then number_of_frames = 1
     int number_of_frames = ram_size/PAGE_SIZE;
 
-    // The size of hashtable is only equal to the number of frames but
-    // freelist has the same number of entries as well
-    hashtable_size = number_of_frames;
+    // The size of hashtable is only equal to the 2 * number of frames
+    hashtable_size = 2*number_of_frames;
 
     // Allocate for the hpt_entries array, kmalloc will call ram_stealmem if the vm bootstrap hasnt been complete
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
     KASSERT(hpt->hpt_entry != NULL);
-
-    // This is the free list chain which should be initilised to chain to next entry
-    free_entries->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
-    KASSERT(free_entries->hpt_entry != NULL);
 
     // set all values hpt_entries (vaddr and paddr) to point to global free pointer
     int i = 0;
@@ -85,29 +70,14 @@ void init_page_table( void )
         hpt->hpt_entry[i].paddr = (paddr_t) emptypointer;
         // Next points to null
         hpt->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
-
-        free_entries->hpt_entry[i].vaddr = (vaddr_t) emptypointer;
-        free_entries->hpt_entry[i].paddr = (paddr_t) emptypointer;
-
-        // Chain the freelist to the next entry one after the other
-        if( i < (hashtable_size - 1) )
-            free_entries->hpt_entry[i].next = &(free_entries->hpt_entry[i+1]);
-        else
-            free_entries->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
     }
-
-    // The free_head points to the first entry when initialised
-    free_head = &(free_entries->hpt_entry[0]);
 
     // Initialise locks
     spinlock_init(hpt->hpt_lock);
-    spinlock_init(free_entries->hpt_lock);
 
 #ifdef DEBUGLOAD
     // set load to zero
     hpt->load = 0;
-    // set free list count to be maximum
-    free_entries->load = number_of_frames;
 #endif
 }
 
@@ -123,6 +93,7 @@ static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr )
             ptr[i] = ( pid >> (i-4)*8 ) & 0xff;
     }
 }
+
 // See if there are collisions with the hash index
 static bool is_colliding( vaddr_t vaddr, pid_t pid )
 {
@@ -153,9 +124,14 @@ static void set_page_zero( struct hpt_entry* current )
     store_in_table( (vaddr_t) emptypointer,(pid_t) emptypointer,(paddr_t) emptypointer, current);
 }
 
+
 // To store an entry into the page table
 bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
 {
+    // Get the page and frame numbers (upper 20 bits)
+    vaddr = vaddr * ENTRYMASK;
+    paddr = paddr * ENTRYMASK;
+
     int index = hash(vaddr,pid);
 
     spinlock_acquire(hpt->hpt_lock);
@@ -174,8 +150,7 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
         // The chained pointer
         struct hpt_entry *nextchained = hpt->hpt_entry[index].next;
 
-        // Get free entry from free list
-        // NESTED LOCK, TODO need to check if this can cause deadlock !!!
+        // Get free entry from pool
         struct hpt_entry *free = get_free_entry();
 
         // TODO When there are no more free nodes
@@ -196,38 +171,11 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
     return true;
 }
 
-/*
-   this is the FREE LIST MANAGEMENT SECTION
-*/
-static void add_to_freelist( struct hpt_entry* to_add )
-{
-    KASSERT( to_add != NULL );
-    spinlock_acquire(free_entries->hpt_lock);
-    // Chain to the head of the list
-    to_add->next = free_head;
-    // Update the free list pointer
-    free_head = to_add;
-    #ifdef DEBUGLOAD
-    free_entries->load++;
-    #endif
-    spinlock_release(free_entries->hpt_lock);
-}
-
-// Gets an entry from the freelist
+// Gets an entry from the pool
 static struct hpt_entry* get_free_entry( void )
 {
     struct hpt_entry *temp;
-    spinlock_acquire(free_entries->hpt_lock);
-    temp = free_head;
-    if ( free_head != NULL )
-    {
-        // pop the first element and move freelist head to next element
-        free_head = free_head->next;
-        #ifdef DEBUGLOAD
-        free_entries->load--;
-        #endif
-    }
-    spinlock_release(free_entries->hpt_lock);
+    temp = kmalloc(sizeof(*temp));
     return temp;
 }
 
@@ -235,10 +183,14 @@ static struct hpt_entry* get_free_entry( void )
 void remove_page_entry( vaddr_t vaddr, pid_t pid )
 {
     KASSERT(vaddr != (vaddr_t) emptypointer);
+    // Get the page number (upper 20 bits)
+    vaddr = vaddr * ENTRYMASK;
+
     // Get hash index
     int index = hash(vaddr, pid);
     struct hpt_entry *current = &(hpt->hpt_entry[index]);
     struct hpt_entry *prev;
+
     spinlock_acquire(hpt->hpt_lock);
 
     // Check if the index matches the vaddr and pid
@@ -246,7 +198,7 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
     {
         set_page_zero(current);
         #ifdef DEBUGLOAD
-        hpt->load++;
+        hpt->load--;
         #endif
         spinlock_release(hpt->hpt_lock);
         return;
@@ -270,7 +222,7 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
                 set_page_zero(current);
 
                 // Release node into free pool
-                add_to_freelist(current);
+                kfree(current);
 
                 spinlock_release(hpt->hpt_lock);
                 return;
@@ -288,12 +240,16 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
 struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 {
     KASSERT(vaddr != 0);
+
+    // Get the page number (upper 20 bits)
+    vaddr = vaddr * ENTRYMASK;
+
     // Get hash index
     int index = hash(vaddr, pid);
     struct hpt_entry* current = &(hpt->hpt_entry[index]);
     spinlock_acquire(hpt->hpt_lock);
 
-    // Check if the index matches the vaddr and pid
+    // Check if the index entry matches the vaddr and pid
     if ( is_equal(vaddr,pid,current) )
     {
         spinlock_release(hpt->hpt_lock);
@@ -332,7 +288,8 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 {
     KASSERT(current != NULL);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
-    // FIXME, vaddr current->vaddr lower 12bit
+    // TODO Review
+    // Fixed as vaddr is only the top 20 bits now
     return ((vaddr == current->vaddr) && (pid == current->pid));
 }
 
@@ -341,6 +298,9 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {
     KASSERT(vaddr != 0);
+
+    // Get the page numbers (upper 20 bits)
+    vaddr = vaddr * ENTRYMASK;
 
     int index = hash(vaddr, pid);
     spinlock_acquire(hpt->hpt_lock);
@@ -379,7 +339,7 @@ bool is_valid( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    if ( (pte->paddr & GLOBALMASK) == VALIDMASK )
+    if ( (pte->control & VALIDMASK) == VALIDMASK )
     {
         spinlock_release(hpt->hpt_lock);
         return true;
@@ -392,7 +352,7 @@ bool is_global( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    if ( (pte->paddr & GLOBALMASK) == GLOBALMASK )
+    if ( (pte->control & GLOBALMASK) == GLOBALMASK )
     {
         spinlock_release(hpt->hpt_lock);
         return true;
@@ -405,7 +365,7 @@ bool is_dirty( const  struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    if ( (pte->paddr & DIRTYMASK) == DIRTYMASK )
+    if ( (pte->control & DIRTYMASK) == DIRTYMASK )
     {
         spinlock_release(hpt->hpt_lock);
         return true;
@@ -418,7 +378,7 @@ bool is_non_cacheable( const struct hpt_entry* pte )
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    if ( (pte->paddr & NCACHEMASK) == NCACHEMASK )
+    if ( (pte->control & NCACHEMASK) == NCACHEMASK )
     {
         spinlock_release(hpt->hpt_lock);
         return true;
@@ -427,75 +387,11 @@ bool is_non_cacheable( const struct hpt_entry* pte )
     return false;
 }
 
-void set_valid( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr |= VALIDMASK;
-    spinlock_release(hpt->hpt_lock);
-}
-
-void set_global( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr |= GLOBALMASK;
-    spinlock_release(hpt->hpt_lock);
-}
-
-void set_dirty( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr |= DIRTYMASK;
-    spinlock_release(hpt->hpt_lock);
-}
-
-void set_noncachable( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr |= NCACHEMASK;
-    spinlock_release(hpt->hpt_lock);
-}
-
-void reset_valid( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr &= (~VALIDMASK);
-    spinlock_release(hpt->hpt_lock);
-}
-
-void reset_global( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr &= (~GLOBALMASK);
-    spinlock_release(hpt->hpt_lock);
-}
-
-void reset_dirty( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr &= (~DIRTYMASK);
-    spinlock_release(hpt->hpt_lock);
-}
-
-void reset_noncachable( struct hpt_entry* pte )
-{
-    KASSERT(pte != NULL);
-    spinlock_acquire(hpt->hpt_lock);
-    pte->paddr &= (~NCACHEMASK);
-    spinlock_release(hpt->hpt_lock);
-}
-
 void set_mask( struct hpt_entry* pte , uint32_t mask)
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    pte->paddr |= mask;
+    pte->control |= mask;
     spinlock_release(hpt->hpt_lock);
 }
 
@@ -503,7 +399,7 @@ void reset_mask( struct hpt_entry* pte , uint32_t mask)
 {
     KASSERT(pte != NULL);
     spinlock_acquire(hpt->hpt_lock);
-    pte->paddr &= (~mask);
+    pte->control &= (~mask);
     spinlock_release(hpt->hpt_lock);
 }
 // TODO

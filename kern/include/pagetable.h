@@ -53,6 +53,16 @@ struct hpt_entry
     // This is the process ID which can be the address space pointer
     pid_t pid;
 
+    // bits 0 - GLOBAL
+    // bits 1 - VALID
+    // bits 2 - DIRTY
+    // bits 3 - NCACHE
+    // bits 4 - READ/WRITE for advanced
+
+    // TODO implement this
+    // TODO Discuss i think better to leave as it is
+    char control;
+
     // Next pointer for the entries
     struct hpt_entry *next;
 };
@@ -60,6 +70,7 @@ struct hpt_entry
 // this initialises the page table
 void init_page_table( void );
 
+// The called can supply the full 32 bits of the VADDR and PADDR to the following FUNCTIONs
 // To store an entry into the page table
 bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
 
@@ -76,6 +87,7 @@ struct hpt_entry * allocate_page( void );
 // O(1) to find out
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid );
 
+// TODO these functions need to check the control bits
 /* 
     These 3 functions take and entry and find out the permissions and other meta data
     of the entry
@@ -85,16 +97,7 @@ bool is_global( const struct hpt_entry* pte );
 bool is_dirty( const struct hpt_entry* pte );
 bool is_non_cacheable( const struct hpt_entry* pte );
 
-void set_valid( struct hpt_entry* pte );
-void set_global( struct hpt_entry* pte );
-void set_dirty( struct hpt_entry* pte );
-void set_noncachable( struct hpt_entry* pte );
-
-void reset_valid( struct hpt_entry* pte );
-void reset_global( struct hpt_entry* pte );
-void reset_dirty( struct hpt_entry* pte );
-void reset_noncachable( struct hpt_entry* pte );
-
+// TODO change the proto to vaddr and pid instead of hpt_entry* pte
 // To set and reset a general mask in a pte for example 
 // mask = GLOBALMASK | DIRTYMASK | VALIDMASK
 void set_mask( struct hpt_entry* pte , uint32_t mask);
