@@ -36,6 +36,7 @@
 
 
 #include <vm.h>
+#include <list.h>
 #include "opt-dumbvm.h"
 
 struct vnode;
@@ -47,18 +48,35 @@ struct vnode;
  *
  * You write this.
  */
+struct as_region_metadata {
+    vaddr_t region_vaddr;
+    int npages;
+
+    // bit 0 is X  PF_X
+    // bit 1 is W  PF_W
+    // bit 2 is R  PF_R
+    char rwxflag;
+
+    // Advanced part for demand loading
+    struct vnode *region_vnode;
+
+    // Link to the next data struct
+    struct list_head link;
+};
 
 struct addrspace {
 #if OPT_DUMBVM
-        vaddr_t as_vbase1;
-        paddr_t as_pbase1;
-        size_t as_npages1;
-        vaddr_t as_vbase2;
-        paddr_t as_pbase2;
-        size_t as_npages2;
-        paddr_t as_stackpbase;
+    vaddr_t as_vbase1;
+    paddr_t as_pbase1;
+    size_t as_npages1;
+    vaddr_t as_vbase2;
+    paddr_t as_pbase2;
+    size_t as_npages2;
+    paddr_t as_stackpbase;
 #else
-        /* Put stuff here for your VM system */
+    /* Put stuff here for your VM system */
+    // Linked list of as_region_metadatas
+    struct as_region_metadata *list;
 #endif
 };
 
