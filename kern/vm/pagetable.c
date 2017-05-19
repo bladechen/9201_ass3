@@ -18,6 +18,8 @@ static const void *emptypointer = NULL;
 static void construct_key( vaddr_t vaddr, pid_t pid , unsigned char* ptr );
 static struct hpt_entry* get_free_entry( void );
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current );
+static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, char control, struct hpt_entry* hpt_ent );
+static void set_page_zero( struct hpt_entry* current );
 
 /*  Hash algorithm to calculate the value pair for the given key
     Note the hash's key is the virtual page address and the process id (which is what it acts on)
@@ -60,16 +62,11 @@ void init_page_table( void )
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
     KASSERT(hpt->hpt_entry != NULL);
 
-    // set all values hpt_entries (vaddr and paddr) to point to global free pointer
+    // set all values hpt_entries (vaddr and paddr) to point to global free pointer and others to 0
     int i = 0;
     for (i = 0; i<hashtable_size; i++)
     {
-        // Virtual addrs are nulls
-        hpt->hpt_entry[i].vaddr = (vaddr_t) emptypointer;
-        // Frames are nulls
-        hpt->hpt_entry[i].paddr = (paddr_t) emptypointer;
-        // Next points to null
-        hpt->hpt_entry[i].next = (struct hpt_entry *) emptypointer;
+        set_page_zero(&(hpt->hpt_entry[i]));
     }
 
     // Initialise locks
@@ -108,11 +105,12 @@ static bool is_colliding( vaddr_t vaddr, pid_t pid )
 }
 
 // WARNING no lock for this function, caller must have lock between this function
-static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_entry* hpt_ent )
+static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, char control, struct hpt_entry* hpt_ent )
 {
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     hpt_ent->vaddr = vaddr;
     hpt_ent->paddr = paddr;
+    hpt_ent->control = control;
     hpt_ent->pid = pid;
     hpt_ent->next = NULL;
 }
@@ -121,23 +119,24 @@ static void store_in_table( vaddr_t vaddr, pid_t pid, paddr_t paddr, struct hpt_
 static void set_page_zero( struct hpt_entry* current )
 {
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
-    store_in_table( (vaddr_t) emptypointer,(pid_t) emptypointer,(paddr_t) emptypointer, current);
+    store_in_table( (vaddr_t) emptypointer, 0 ,(paddr_t) emptypointer, 0, current);
 }
 
-
+// TODO somewhere we need to introduce the control section for the bit
+// TODO most likely in as_define region would be good
 // To store an entry into the page table
-bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
+bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
 {
     // Get the page and frame numbers (upper 20 bits)
-    vaddr = vaddr * ENTRYMASK;
-    paddr = paddr * ENTRYMASK;
+    vaddr = vaddr & ENTRYMASK;
+    paddr = paddr & ENTRYMASK;
 
     int index = hash(vaddr,pid);
 
     spinlock_acquire(hpt->hpt_lock);
     if ( !is_colliding( vaddr , pid ) )
     {
-        store_in_table(vaddr, pid, paddr, &(hpt->hpt_entry[index]) );
+        store_in_table(vaddr, pid, paddr, control, &(hpt->hpt_entry[index]) );
 
         #ifdef DEBUGLOAD
         hpt->load++;
@@ -161,7 +160,7 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
             return false;
         }
         // Store in table
-        store_in_table( vaddr, pid, paddr, free );
+        store_in_table( vaddr, pid, paddr, control, free );
         // link in the next chain
         current->next = free;
         // What if free is NULL
@@ -174,17 +173,16 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr )
 // Gets an entry from the pool
 static struct hpt_entry* get_free_entry( void )
 {
-    struct hpt_entry *temp;
-    temp = kmalloc(sizeof(*temp));
-    return temp;
+    return kmalloc(sizeof(struct hpt_entry));
 }
 
+// TODO do we need to check with the permission of the page to compare before removing?
 // Remove an entry from the hash table
-void remove_page_entry( vaddr_t vaddr, pid_t pid )
+int remove_page_entry( vaddr_t vaddr, pid_t pid )
 {
     KASSERT(vaddr != (vaddr_t) emptypointer);
     // Get the page number (upper 20 bits)
-    vaddr = vaddr * ENTRYMASK;
+    vaddr = vaddr & ENTRYMASK;
 
     // Get hash index
     int index = hash(vaddr, pid);
@@ -201,7 +199,7 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
         hpt->load--;
         #endif
         spinlock_release(hpt->hpt_lock);
-        return;
+        return 0;
     }
     else
     {
@@ -225,24 +223,25 @@ void remove_page_entry( vaddr_t vaddr, pid_t pid )
                 kfree(current);
 
                 spinlock_release(hpt->hpt_lock);
-                return;
+                return 0;
             }
             prev = current;
             current = current->next;
         }
         spinlock_release(hpt->hpt_lock);
-        return;
+        return -1;
     }
 }
 
 // TODO needs to be REVIEWED
+// TODO what about the control bits, should we check against that? I dont think so
 // Gets the physical frame address in memory
 struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
 {
     KASSERT(vaddr != 0);
 
     // Get the page number (upper 20 bits)
-    vaddr = vaddr * ENTRYMASK;
+    vaddr = vaddr & ENTRYMASK;
 
     // Get hash index
     int index = hash(vaddr, pid);
@@ -300,7 +299,7 @@ bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
     KASSERT(vaddr != 0);
 
     // Get the page numbers (upper 20 bits)
-    vaddr = vaddr * ENTRYMASK;
+    vaddr = vaddr & ENTRYMASK;
 
     int index = hash(vaddr, pid);
     spinlock_acquire(hpt->hpt_lock);

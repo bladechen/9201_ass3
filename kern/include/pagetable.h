@@ -11,10 +11,11 @@
 #define ENTRYMASK 0xfffff000
 #define OFFSETMASK 0x00000fff
 
-#define NCACHEMASK  (1<<11)
-#define DIRTYMASK   (1<<10)
-#define VALIDMASK   (1<<9)
-#define GLOBALMASK  (1<<8)
+#define READWRITE   (1<<4)
+#define NCACHEMASK  (1<<3)
+#define DIRTYMASK   (1<<2)
+#define VALIDMASK   (1<<1)
+#define GLOBALMASK  (1<<0)
 
 #define DEBUGLOAD 1
 
@@ -60,7 +61,6 @@ struct hpt_entry
     // bits 4 - READ/WRITE for advanced
 
     // TODO implement this
-    // TODO Discuss i think better to leave as it is
     char control;
 
     // Next pointer for the entries
@@ -72,10 +72,10 @@ void init_page_table( void );
 
 // The called can supply the full 32 bits of the VADDR and PADDR to the following FUNCTIONs
 // To store an entry into the page table
-bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr );
+bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
 
 // Remove an entry from the hash table
-void remove_page_entry( vaddr_t vaddr, pid_t pid );
+int remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 // Gets the physical frame address in memory
 struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid );
