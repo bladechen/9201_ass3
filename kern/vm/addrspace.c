@@ -179,7 +179,7 @@ as_prepare_load(struct addrspace *as)
      * Write this.
      */
 
-    (void)as;
+    as->is_loading |= 1;
     return 0;
 }
 
@@ -190,7 +190,7 @@ as_complete_load(struct addrspace *as)
      * Write this.
      */
 
-    (void)as;
+    as->is_loading |= 0;
     return 0;
 }
 
