@@ -1,10 +1,14 @@
 #include <types.h>
+#include <elf.h>
 #include <kern/errno.h>
 #include <lib.h>
 #include <thread.h>
+#include <current.h>
+#include <proc.h>
 #include <addrspace.h>
 #include <vm.h>
 #include <machine/tlb.h>
+#include <pagetable.h>
 /* #include <frametable.h> */
 /* #include <coreswap.h> */
 
@@ -49,15 +53,101 @@ void vm_bootstrap(void)
 
 }
 
-int
-vm_fault(int faulttype, vaddr_t faultaddress)
+inline static vaddr_t upper_addr(vaddr_t addr, int pages)
 {
-    (void) faulttype;
-    (void) faultaddress;
+    KASSERT(pages >= 1);
+    return (addr + (pages << 12));
 
-    panic("vm_fault hasn't been written yet\n");
+}
+static struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress)
+{
+    KASSERT(space != NULL);
+    KASSERT(space->list != NULL);
+    KASSERT(!(faultaddress & OFFSETMASK));
+    struct as_region_metadata* cur = NULL;
+    struct list_head* head = &(space->list->link);
+    list_for_each_entry(cur, head, link)
+    {
+        if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress)
+        {
+            return cur;
+        }
+    }
+    return NULL;
 
-    return EFAULT;
+}
+int vm_fault(int faulttype, vaddr_t faultaddress)
+{
+	uint32_t tlb_hi, tlb_lo;
+	struct addrspace *as;
+
+	faultaddress &= PAGE_FRAME;
+
+    if (curproc == NULL) {
+		/*
+		 * No process. This is probably a kernel fault early
+		 * in boot. Return EFAULT so as to panic instead of
+		 * getting into an infinite faulting loop.
+		 */
+		return EFAULT;
+	}
+
+	as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return EFAULT;
+	}
+	DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
+    pid_t pid = (pid_t) as;
+
+    struct as_region_metadata* region = get_region(as, faultaddress);
+    if (region == NULL)
+    {
+        DEBUG(DB_VM, "not find region 0x%x\n", faultaddress);
+        return EFAULT;
+    }
+    if ((region->rwxflag & PF_W) == 0 && VM_FAULT_READONLY == faulttype)
+    {
+        DEBUG(DB_VM, "not writable 0x%x\n", faultaddress);
+        return EFAULT;
+    }
+    if (is_valid_virtual(faultaddress, pid) == 0)
+    {
+        DEBUG(DB_VM, "not in page table 0x%x\n", faultaddress);
+        return EFAULT;
+    }
+
+    if (faulttype == VM_FAULT_READONLY)
+    {
+        // only in adv asst
+        panic(" why VM_FAULT_READONLY ");
+
+    }
+    else
+    {
+
+        int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+        if (ret != 0)
+        {
+            panic("what happen in get_tlb_entry");
+        }
+        int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
+
+        tlb_lo |= write_permission;
+        tlb_random(tlb_hi, tlb_lo);
+
+        /* paddr_t frame_addr = get_free_frame(); */
+        /* if (frame_addr == 0) */
+        /* { */
+        /*     return ENOMEM; */
+        /* } */
+        /*  */
+    }
+	return EFAULT;
+
 }
 
 /*
@@ -72,71 +162,3 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	panic("vm tried to do tlb shootdown?!\n");
 }
 
-/* int do_swapout(struct pagetable_entry* entry) */
-/* { */
-/*     lock_acquire(&vm_lock); */
-/*     KASSERT(entry != NULL); */
-/*     KASSERT(entry->status == PAGETABLE_ENTRY_INRAM); */
-/*     KASSERT(entry->swappage_entry == NULL); */
-/*     KASSERT(entry->corepage_entry != NULL); */
-/*     KASSERT(entry->corepage_entry->status == COREPAGE_USER); */
-/*     KASSERT(entry->corepage_entry->owner == entry); */
-/*     int ret = swapout_corepage(entry->corepage_entry, &(entry->swappage_entry)); */
-/*     if (ret != 0) */
-/*     { */
-/*         lock_release(&vm_lock); */
-/*         return ret; */
-/*     } */
-/*  */
-/*     entry->corepage_entry = NULL; */
-/*     entry->status = PAGETABLE_ENTRY_INSWAP; */
-/*     struct pagetable_entry* tmp = entry->next; */
-/*     struct swap_page* swap = entry->swappage_entry; */
-/*  */
-/*     while (tmp != entry) */
-/*     { */
-/*         tmp->corepage_entry = NULL; */
-/*         tmp->swappage_entry = swap; */
-/*         tmp->status = PAGETABLE_ENTRY_INSWAP; */
-/*     } */
-/*  */
-/*     lock_release(&vm_lock); */
-/*     return 0; */
-/* } */
-/*  */
-/* int do_swapin(struct pagetable_entry* entry) */
-/* { */
-/*     KASSERT(entry != NULL); */
-/*     KASSERT(entry->status == PAGETABLE_ENTRY_INSWAP); */
-/*     KASSERT(entry->swappage_entry != NULL); */
-/*     KASSERT(entry->corepage_entry == NULL); */
-/*     KASSERT(entry->swappage_entry->owner == entry); */
-/*     KASSERT(entry->swappage_entry->status == SWAP_INUSE); */
-/*  */
-/*     struct core_page* core = find_one_available_page(); */
-/*     if (core == NULL) */
-/*     { */
-/*         return ENOMEM; */
-/*     } */
-/*     lock_acquire(vm_lock); */
-/*  */
-/*     entry->corepage_entry = core; */
-/*  */
-/*     swapin_corepage(entry->corepage_entry, (entry->swappage_entry)); */
-/*  */
-/*  */
-/*     entry->swappage_entry = NULL; */
-/*  */
-/*     entry->status = PAGETABLE_ENTRY_INRAM; */
-/*     struct pagetable_entry* tmp = entry->next; */
-/*  */
-/*     while (tmp != entry) */
-/*     { */
-/*         tmp->corepage_entry = entry->corepage_entry; */
-/*         tmp->swappage_entry = NULL; */
-/*         tmp->status = PAGETABLE_ENTRY_INRAM; */
-/*     } */
-/*     lock_release(vm_lock); */
-/*  */
-/*     return 0; */
-/* } */

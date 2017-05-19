@@ -105,7 +105,7 @@ void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask);
 
 // Struct to get the entries for the TLB
 // Should return error code if not successfuld
-int get_tlb_entry(  vaddr_t vaddr , pid_t pid, int* tlb_hi, int* tlb_lo );
+int get_tlb_entry(  vaddr_t vaddr , pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_lo );
 
 // Initialise the hash table and set the fields to the initial values
 int init_hashtable( void );

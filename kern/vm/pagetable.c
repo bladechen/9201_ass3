@@ -435,7 +435,7 @@ void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 // TODO
 // Struct to get the entries for the TLB
 // Should return error code if not successful
-int get_tlb_entry(vaddr_t vaddr, pid_t pid , int* tlb_hi, int* tlb_lo )
+int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo )
 {
 
     vaddr = vaddr & ENTRYMASK;
