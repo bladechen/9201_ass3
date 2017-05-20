@@ -38,6 +38,7 @@
 #include <vm.h>
 #include <proc.h>
 
+#include <elf.h>
 #include <list.h>
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -135,7 +136,7 @@ as_deactivate(void)
  * want to implement them.
  */
 int
-as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
+as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t filesize,
              int readable, int writeable, int executable)
 {
     /*
@@ -148,10 +149,28 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
     }
 
     temp->region_vaddr = vaddr;
-    temp->npages = convert_to_pages(memsize);   
-    temp->rwxflag = readable | writeable | executable; 
-    paddr_t paddr = get_free_frame();
+    // TODO i think this should be filesize and not memsize ?
+    temp->npages = convert_to_pages(memsize);
+    temp->rwxflag = readable | writeable | executable;
 
+    if ( readable != 0 && writeable != 0 && executable == 0 )
+    {
+        // if RW- then DATA
+        temp->type = DATA;
+    }
+    else if ( readable != 0 && writeable == 0 && executable != 0 )
+    {
+        // if R-X then CODE
+        temp->type = CODE;
+    }
+    else
+    {
+        // TODO what else needs to be initialised
+        // it can either be stack or heap
+        temp->type = HEAP;
+    }
+
+    // Add region entry into the data structure
     if (as->list == NULL)
     {
         // If first region then init temp to point to itself
@@ -164,12 +183,38 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
         list_add_tail( &(temp->link), &(as->list->link) );
     }
 
-    (void) paddr;
-    //int pid = (int) as;
-    //int retval = 0;
-    //int permission = temp->rwxflag; 
-    //store_entry (vaddr, pid, paddr); 
-    return ENOSYS; /* Unimplemented */
+    // Now make the Page table mapping for the filesize bytes only
+    size_t filepages = convert_to_pages(filesize);
+    size_t i = 0;
+    vaddr_t page_vaddr = 0;
+    for (i=0;i<filepages;i++)
+    {
+        paddr_t paddr = get_free_frame();
+        pid_t pid = (pid_t) as;
+        if ( paddr == 0 )
+        {
+            // TODO
+            // Should we free the region here?
+            return ENOMEM;
+        }
+
+        // Construct the control bits for the PTE
+        // Just set validmask for now, all entries are cacheable and none are global
+        char control = VALIDMASK;
+        page_vaddr = vaddr + i*PAGE_SIZE;
+
+        // TODO is the dirty bit set when its writeable or otherwise?
+        if ( writeable != 0 )
+        {
+            control &= (~DIRTYMASK);
+        }
+        else
+        {
+            control |= DIRTYMASK;
+        }
+        store_entry (page_vaddr, pid, paddr, control); 
+    }
+    return 0;
 }
 
 int
@@ -190,7 +235,7 @@ as_complete_load(struct addrspace *as)
      * Write this.
      */
 
-    as->is_loading |= 0;
+    as->is_loading &= 0;
     return 0;
 }
 
@@ -201,19 +246,32 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
      * Write this.
      */
 
-    (void)as;
-
     /* Initial user-level stack pointer */
     *stackptr = USERSTACK;
 
+    // Define the stack as a region with 16K size allocated for it
+    int retval = as_define_region(as, *stackptr, 4*PAGE_SIZE, 4*PAGE_SIZE, PF_R, PF_W, 0);
+    if ( retval != 0 )
+    {
+        return retval;
+    }
+    struct list_head *temp = NULL;
+    struct as_region_metadata *last_region = NULL;
+    list_for_each_prev(temp, &(as->list->link))
+    {
+        last_region = list_entry(temp, struct as_region_metadata, link);
+        last_region->type = STACK;
+        break;
+    }
     return 0;
 }
 
 static int convert_to_pages(size_t memsize)
 {
     int pgsize = 0;
+    // If non zero memsize then divide by PAGE_SIZE and add 1
     if ( memsize != 0 )
-        pgsize = (memsize)/PAGE_SIZE;
+        pgsize = 1 + ((memsize-1)>>12);
 
     return pgsize;
 }

@@ -47,15 +47,23 @@ struct vnode;
  *
  * You write this.
  */
+enum region_type {
+    CODE,
+    DATA,
+    STACK,
+    HEAP
+};
+
 struct as_region_metadata {
     vaddr_t region_vaddr;
-    int npages;
+    size_t npages;
 
     // bit 0 is X  PF_X
     // bit 1 is W  PF_W
     // bit 2 is R  PF_R
     char rwxflag;
 
+    enum region_type type;
     // Advanced part for demand loading
     struct vnode *region_vnode;
 
@@ -128,14 +136,13 @@ void              as_deactivate(void);
 void              as_destroy(struct addrspace *);
 
 int               as_define_region(struct addrspace *as,
-                                   vaddr_t vaddr, size_t sz,
+                                   vaddr_t vaddr, size_t memsz, size_t filesz,
                                    int readable,
                                    int writeable,
                                    int executable);
 int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
-
 
 /*
  * Functions in loadelf.c
@@ -145,6 +152,5 @@ int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
  */
 
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
-
 
 #endif /* _ADDRSPACE_H_ */

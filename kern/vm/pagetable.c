@@ -122,8 +122,6 @@ static void set_page_zero( struct hpt_entry* current )
     store_in_table( (vaddr_t) emptypointer, 0 ,(paddr_t) emptypointer, 0, current);
 }
 
-// TODO somewhere we need to introduce the control section for the bit
-// TODO most likely in as_define region would be good
 // To store an entry into the page table
 bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
 {

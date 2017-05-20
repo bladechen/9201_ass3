@@ -167,7 +167,7 @@ static vaddr_t alloc_upages()
     if (tmp == NULL)
     {
         spinlock_release(&frame_lock);
-        return ENOMEM;
+        return 0;
     }
     clear_frame(tmp, USER_FRAME);
     spinlock_release(&frame_lock);
