@@ -51,6 +51,33 @@
  */
 
 static int convert_to_pages(size_t memsize);
+static struct as_region_metadata* as_create_region(void);
+static void copy_region(struct as_region_metadata *old, struct as_region_metadata *new)
+{
+    new->region_vaddr = old->region_vaddr;
+    new->npages = old->npages;
+    new->rwxflag = old->rwxflag;
+    new->type = old->type;
+    new->region_vaddr = old->region_vaddr;
+
+    // The new link is created in the as_add_to_list function
+}
+
+static void as_add_to_list(struct addrspace *as,struct as_region_metadata *temp)
+{
+    // Add region entry into the data structure
+    if (as->list == NULL)
+    {
+        // If first region then init temp to point to itself
+        INIT_LIST_HEAD(&(temp->link));
+        as->list = temp;
+    }
+    else
+    {
+        // If not the first entry then add to the queue
+        list_add_tail( &(temp->link), &(as->list->link) );
+    }
+}
 
 struct addrspace *
 as_create(void)
@@ -61,7 +88,6 @@ as_create(void)
     if (as == NULL) {
             return NULL;
     }
-    
     as->list = NULL;
     return as;
 }
@@ -76,9 +102,20 @@ as_copy(struct addrspace *old, struct addrspace **ret)
             return ENOMEM;
     }
 
-    // TODO
-
-    (void)old;
+    struct list_head *old_region_link=NULL;
+    list_for_each(old_region_link, &(old->list->link))
+    {
+        struct as_region_metadata *new_region = as_create_region();
+        if (new_region == NULL)
+        {
+            return ENOMEM;
+        }
+        struct as_region_metadata *old_region = list_entry(old_region_link, struct as_region_metadata, link);
+        // loop through all the regions
+        copy_region(old_region, new_region);
+        // add the new region to the new address space
+        as_add_to_list(*ret, new_region);
+    }
 
     *ret = newas;
     return 0;
@@ -149,7 +186,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
      * Write this.
      */
     struct as_region_metadata *temp;
-    temp = kmalloc(sizeof(*temp));
+    temp = as_create_region();
     if (temp == NULL) {
             return ENOMEM;
     }
@@ -173,18 +210,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
         temp->type = OTHER;
     }
 
-    // Add region entry into the data structure
-    if (as->list == NULL)
-    {
-        // If first region then init temp to point to itself
-        INIT_LIST_HEAD(&(temp->link));
-        as->list = temp;
-    }
-    else
-    {
-        // If not the first entry then add to the queue
-        list_add_tail( &(temp->link), &(as->list->link) );
-    }
+    as_add_to_list(as,temp);
 
     // Now make the Page table mapping for the filesize bytes only
     size_t filepages = convert_to_pages(filesize);
@@ -280,6 +306,12 @@ static int convert_to_pages(size_t memsize)
         pgsize = 1 + ((memsize-1)>>12);
 
     return pgsize;
+}
+
+static struct as_region_metadata* as_create_region(void)
+{
+    struct as_region_metadata *temp = kmalloc(sizeof(*temp));
+    return temp;
 }
 
 void as_destroy_region(struct as_region_metadata *to_del)
