@@ -52,6 +52,7 @@
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
 
+extern uint32_t dbflags;
 
 /*
  * These two pieces of data are maintained by the makefiles and build system.
@@ -212,6 +213,7 @@ sys_reboot(int code)
 void
 kmain(char *arguments)
 {
+    dbflags = DB_VM;
 	boot();
 
 	menu(arguments);

@@ -93,32 +93,3 @@ void tlb_flush()
 	splx(spl);
 }
 
-void tlb_force_write(vaddr_t vaddr, paddr_t paddr)
-{
-
-	int spl = splhigh();
-	KASSERT((paddr  & (~TLBLO_PPAGE))  == 0);
-	/* Check for Invalid Entries in the TLB
-	 * if none found replace a random entry
-	 */
-
-	uint32_t ehi, elo;
-	for (int i=0; i<NUM_TLB; i++)
-	{
-		tlb_read(&ehi, &elo, i);
-		if (elo & TLBLO_VALID)
-		{
-			continue;
-		}
-		ehi = vaddr;
-		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-		/* DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr); */
-		tlb_write(ehi, elo, i);
-		splx(spl);
-	}
-	ehi = vaddr;
-	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-	//FIXME , some algorith for choosing tlb?
-	tlb_random(ehi,elo);
-	splx(spl);
-}
