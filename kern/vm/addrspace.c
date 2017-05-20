@@ -62,7 +62,27 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
 
     // The new link is created in the as_add_to_list function
 }
+static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size_t memsize, char perm)
+{
+    region->region_vaddr = vaddr;
+    region->npages = convert_to_pages(memsize);
+    region->rwxflag = perm;
 
+    if ( (perm & PF_R) != 0 && (perm & PF_W) != 0 && (perm & PF_X) == 0 )
+    {
+        // if RW- then DATA
+        region->type = DATA;
+    }
+    else if ( (perm & PF_R) != 0 && (perm & PF_W) == 0 && (perm & PF_X) != 0 )
+    {
+        // if R-X then CODE
+        region->type = CODE;
+    }
+    else
+    {
+        region->type = OTHER;
+    }
+}
 static void as_add_to_list(struct addrspace *as,struct as_region_metadata *temp)
 {
     // Add region entry into the data structure
@@ -191,25 +211,9 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
             return ENOMEM;
     }
 
-    temp->region_vaddr = vaddr;
-    temp->npages = convert_to_pages(memsize);
-    temp->rwxflag = readable | writeable | executable;
-
-    if ( readable != 0 && writeable != 0 && executable == 0 )
-    {
-        // if RW- then DATA
-        temp->type = DATA;
-    }
-    else if ( readable != 0 && writeable == 0 && executable != 0 )
-    {
-        // if R-X then CODE
-        temp->type = CODE;
-    }
-    else
-    {
-        temp->type = OTHER;
-    }
-
+    as_set_region(temp, vaddr, memsize, 
+            readable | writeable | executable
+            );
     as_add_to_list(as,temp);
 
     // Now make the Page table mapping for the filesize bytes only
