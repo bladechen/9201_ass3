@@ -280,6 +280,7 @@ file      lib/bitmap.c
 file      lib/bswap.c
 file      lib/kgets.c
 file      lib/kprintf.c
+file      lib/list.c
 file      lib/misc.c
 file      lib/time.c
 file      lib/uio.c

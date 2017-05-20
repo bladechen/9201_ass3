@@ -49,8 +49,6 @@ void init_page_table( void )
     hpt = (struct hashed_page_table *) kmalloc(sizeof(*hpt));
     KASSERT(hpt != NULL);
 
-    DEBUG(DB_VM, "Hash Page Table Initialised...\n");
-
     // it should technically be round(ram_size/PAGE_SIZE) which is
     // if ram_size == 4095 then number_of_frames = 1
     int number_of_frames = ram_size/PAGE_SIZE;
@@ -62,20 +60,27 @@ void init_page_table( void )
     hpt->hpt_entry = kmalloc(hashtable_size * sizeof(struct hpt_entry));
     KASSERT(hpt->hpt_entry != NULL);
 
+    DEBUG(DB_VM, "Hash Page Table Initialised...\n");
     // set all values hpt_entries (vaddr and paddr) to point to global free pointer and others to 0
+    hpt->hpt_lock = kmalloc(sizeof(struct spinlock));
+    // Initialise locks
+    spinlock_init(hpt->hpt_lock);
+
     int i = 0;
+    spinlock_acquire(hpt->hpt_lock);
     for (i = 0; i<hashtable_size; i++)
     {
         set_page_zero(&(hpt->hpt_entry[i]));
     }
-
-    // Initialise locks
-    spinlock_init(hpt->hpt_lock);
+    spinlock_release(hpt->hpt_lock);
 
 #ifdef DEBUGLOAD
     // set load to zero
     hpt->load = 0;
 #endif
+    DEBUG(DB_VM, "Number of Page table entries = %d\nHash table Load: %2d\n", hashtable_size, hpt->load);
+    unsigned long size_inbytes_pagetable = hashtable_size * sizeof(struct hpt_entry);
+    DEBUG(DB_VM, "Size of Page table: %2lu\n", size_inbytes_pagetable );
 }
 
 // Helper function to construct the key for the hash function
@@ -302,7 +307,6 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
     return ((vaddr == current->vaddr) && (pid == current->pid));
 }
 
-// TODO We should check the valid bit for this as well ?
 // Is this entry present in the hash table already?
 bool is_valid_virtual( vaddr_t vaddr , pid_t pid )
 {

@@ -76,9 +76,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
             return ENOMEM;
     }
 
-    /*
-     * Write this.
-     */
+    // TODO
 
     (void)old;
 
@@ -89,10 +87,16 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
-    /*
-     * Clean up as needed.
-     */
+    struct list_head *current = NULL;
 
+    // TODO check this again
+    list_for_each(current, &(as->list->link))
+    {
+        list_del(current);
+    }
+    // when we get here there should be only one node left in the list
+    // So free that node and then free the as struct
+    as_destroy_region(as->list);
     kfree(as);
 }
 
@@ -101,6 +105,7 @@ as_activate(void)
 {
     struct addrspace *as;
 
+    tlb_flush();
     as = proc_getas();
     if (as == NULL) {
             /*
@@ -118,6 +123,7 @@ as_activate(void)
 void
 as_deactivate(void)
 {
+    as_activate();
     /*
      * Write this. For many designs it won't need to actually do
      * anything. See proc.c for an explanation of why it (might)
@@ -149,7 +155,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
     }
 
     temp->region_vaddr = vaddr;
-    // TODO i think this should be filesize and not memsize ?
     temp->npages = convert_to_pages(memsize);
     temp->rwxflag = readable | writeable | executable;
 
@@ -165,9 +170,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
     }
     else
     {
-        // TODO what else needs to be initialised
-        // it can either be stack or heap
-        temp->type = HEAP;
+        temp->type = OTHER;
     }
 
     // Add region entry into the data structure
@@ -187,14 +190,13 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
     size_t filepages = convert_to_pages(filesize);
     size_t i = 0;
     vaddr_t page_vaddr = 0;
+    pid_t pid = (pid_t) as;
+
     for (i=0;i<filepages;i++)
     {
         paddr_t paddr = get_free_frame();
-        pid_t pid = (pid_t) as;
         if ( paddr == 0 )
         {
-            // TODO
-            // Should we free the region here?
             return ENOMEM;
         }
 
@@ -203,16 +205,20 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
         char control = VALIDMASK;
         page_vaddr = vaddr + i*PAGE_SIZE;
 
-        // TODO is the dirty bit set when its writeable or otherwise?
         if ( writeable != 0 )
-        {
-            control &= (~DIRTYMASK);
-        }
-        else
         {
             control |= DIRTYMASK;
         }
-        store_entry (page_vaddr, pid, paddr, control); 
+        else
+        {
+            control &= (~DIRTYMASK);
+        }
+        bool result = store_entry (page_vaddr, pid, paddr, control); 
+
+        if (!result)
+        {
+            return ENOMEM;
+        }
     }
     return 0;
 }
@@ -274,4 +280,10 @@ static int convert_to_pages(size_t memsize)
         pgsize = 1 + ((memsize-1)>>12);
 
     return pgsize;
+}
+
+void as_destroy_region(struct as_region_metadata *to_del)
+{
+    // currently nothing in as_region_metadata is kmalloced so just kfree the datastructure
+    kfree(to_del);
 }

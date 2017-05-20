@@ -51,7 +51,8 @@ enum region_type {
     CODE,
     DATA,
     STACK,
-    HEAP
+    HEAP,
+    OTHER
 };
 
 struct as_region_metadata {
@@ -144,6 +145,8 @@ int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 
+// Additions
+void as_destroy_region(struct as_region_metadata *to_del);
 /*
  * Functions in loadelf.c
  *    load_elf - load an ELF user program executable into the current

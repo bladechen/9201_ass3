@@ -30,6 +30,7 @@ void vm_bootstrap(void)
 
     /* init_coreswap(); */
     DEBUG(DB_VM, "init_frametable ing....\n");
+    init_page_table();
     init_frametable();
     DEBUG(DB_VM, "init_frametable finish\n");
     /* vaddr_t p = alloc_kpages(1); */
@@ -106,15 +107,15 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     struct as_region_metadata* region = get_region(as, faultaddress);
     if (region == NULL)
     {
-        DEBUG(DB_VM, "not find region 0x%x\n", faultaddress);
+        DEBUG(DB_VM, "Couldnt find region 0x%x\n", faultaddress);
         return EFAULT;
     }
-    if ((region->rwxflag & PF_W) == 0 && VM_FAULT_READONLY == faulttype)
+    if ( ((region->rwxflag & PF_W) != 0) && (faulttype == VM_FAULT_READONLY) )
     {
         DEBUG(DB_VM, "not writable 0x%x\n", faultaddress);
         return EFAULT;
     }
-    if (is_valid_virtual(faultaddress, pid) == 0)
+    if (!is_valid_virtual(faultaddress, pid))
     {
         DEBUG(DB_VM, "not in page table 0x%x\n", faultaddress);
         return EFAULT;
