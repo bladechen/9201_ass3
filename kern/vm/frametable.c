@@ -40,8 +40,16 @@ static int paddr_2_frametable_idx(paddr_t paddr)
     KASSERT(idx >= 0 && idx < frametable_size);
     return idx;
 }
+static bool is_user_frame(struct frame_entry * frame)
+{
+    KASSERT(frame != NULL);
+    return (frame ->frame_status == USER_FRAME
+            && frame->owner == NULL
+            && frame->next_free == NULL
+            &&frame-> locked == 0);
+}
 
-static int is_kernel_frame(struct frame_entry * frame)
+static bool is_kernel_frame(struct frame_entry * frame)
 {
     KASSERT(frame != NULL);
     return (frame ->frame_status == KERNEL_FRAME
@@ -76,7 +84,7 @@ static void free_frame_entry(struct frame_entry* entry)
     entry->next_free = free_entry_list;
     free_entry_list = entry;
 
-    free_list_count++; 
+    free_list_count++;
     spinlock_release(&free_frame_list_lock);
     return;
 }
@@ -180,6 +188,20 @@ static vaddr_t alloc_upages()
 paddr_t get_free_frame(void)
 {
     return KVADDR_TO_PADDR(alloc_upages());
+}
+
+void free_upages(paddr_t paddr)
+{
+    int frametable_index = paddr_2_frametable_idx(paddr);
+    DEBUG(DB_VM, "free: %x\n", paddr);
+    spinlock_acquire(&frame_lock);
+    KASSERT(is_user_frame(frame_table + frametable_index));
+    spinlock_release(&frame_lock);
+
+    free_frame_entry(frame_table + frametable_index);
+    return;
+
+
 }
 // exported
 void free_kpages(vaddr_t addr)

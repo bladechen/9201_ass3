@@ -86,16 +86,16 @@ static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size
 static void as_add_to_list(struct addrspace *as,struct as_region_metadata *temp)
 {
     // Add region entry into the data structure
-    if (as->list == NULL)
-    {
-        // If first region then init temp to point to itself
-        INIT_LIST_HEAD(&(temp->link));
-        as->list = temp;
-    }
-    else
+    /* if (as->list == NULL) */
+    /* { */
+    /*     // If first region then init temp to point to itself */
+    /*     INIT_LIST_HEAD(&(temp->link)); */
+    /*     as->list = temp; */
+    /* } */
+    /* else */
     {
         // If not the first entry then add to the queue
-        list_add_tail( &(temp->link), &(as->list->link) );
+        list_add_tail( &(temp->link), &(as->list->head) );
     }
 }
 
@@ -106,9 +106,10 @@ as_create(void)
 
     as = kmalloc(sizeof(struct addrspace));
     if (as == NULL) {
-            return NULL;
+        return NULL;
     }
-    as->list = NULL;
+    as->list = kmalloc(sizeof(struct list));
+    INIT_LIST_HEAD(&(as->list->head));
     return as;
 }
 
@@ -119,11 +120,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
     newas = as_create();
     if (newas==NULL) {
-            return ENOMEM;
+        return ENOMEM;
     }
 
     struct list_head *old_region_link=NULL;
-    list_for_each(old_region_link, &(old->list->link))
+    list_for_each(old_region_link, &(old->list->head))
     {
         struct as_region_metadata *new_region = as_create_region();
         if (new_region == NULL)
@@ -145,15 +146,26 @@ void
 as_destroy(struct addrspace *as)
 {
     struct list_head *current = NULL;
+    struct list_head *tmp_head = NULL;
+
+/* @pos:    the pointer of struct list_head* to use as a loop counter.
+ * @n:      tm pointer of struct list_head*
+ * @l:      the list pointer
+ */
+/* #define list_for_each_entry_safe(pos, n, l)\ */
+     /* for ( pos = ((l)->head.next == &((l)->head) ? NULL:list_get_entry_from_link((l)->head.next)), \ */
 
     // TODO check this again
-    list_for_each(current, &(as->list->link))
+    list_for_each_safe(current, tmp_head, &(as->list->head))
     {
+        struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
         list_del(current);
+        as_destroy_region(tmp);
     }
     // when we get here there should be only one node left in the list
     // So free that node and then free the as struct
-    as_destroy_region(as->list);
+    /* as_destroy_region(as->list); */
+    kfree(as->list);
     kfree(as);
 }
 
@@ -165,11 +177,11 @@ as_activate(void)
     tlb_flush();
     as = proc_getas();
     if (as == NULL) {
-            /*
-             * Kernel thread without an address space; leave the
-             * prior address space in place.
-             */
-            return;
+        /*
+         * Kernel thread without an address space; leave the
+         * prior address space in place.
+         */
+        return;
     }
 
     /*
@@ -200,20 +212,21 @@ as_deactivate(void)
  */
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t filesize,
-             int readable, int writeable, int executable)
+                 int readable, int writeable, int executable)
 {
     /*
      * Write this.
      */
     struct as_region_metadata *temp;
     temp = as_create_region();
-    if (temp == NULL) {
-            return ENOMEM;
+    if (temp == NULL)
+    {
+        return ENOMEM;
     }
 
-    as_set_region(temp, vaddr, memsize, 
-            readable | writeable | executable
-            );
+    as_set_region(temp, vaddr, memsize,
+                  readable | writeable | executable
+                 );
     as_add_to_list(as,temp);
 
     // Now make the Page table mapping for the filesize bytes only
@@ -243,7 +256,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
         {
             control &= (~DIRTYMASK);
         }
-        bool result = store_entry (page_vaddr, pid, paddr, control); 
+        bool result = store_entry (page_vaddr, pid, paddr, control);
 
         if (!result)
         {
@@ -260,7 +273,7 @@ as_prepare_load(struct addrspace *as)
      * Write this.
      */
 
-    as->is_loading |= 1;
+    as->is_loading = 1;
     return 0;
 }
 
@@ -271,7 +284,29 @@ as_complete_load(struct addrspace *as)
      * Write this.
      */
 
-    as->is_loading &= 0;
+    struct list_head *current = NULL;
+    struct list_head *tmp_head = NULL;
+
+/* @pos:    the pointer of struct list_head* to use as a loop counter.
+ * @n:      tm pointer of struct list_head*
+ * @l:      the list pointer
+ */
+/* #define list_for_each_entry_safe(pos, n, l)\ */
+     /* for ( pos = ((l)->head.next == &((l)->head) ? NULL:list_get_entry_from_link((l)->head.next)), \ */
+
+    // TODO check this again
+    list_for_each_safe(current, tmp_head, &(as->list->head))
+    {
+        struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
+        DEBUG(DB_VM, " region : 0x%x, page: %d\n", tmp->region_vaddr, tmp->npages);
+    }
+    // when we get here there should be only one node left in the list
+    // So free that node and then free the as struct
+    /* as_destroy_region(as->list); */
+
+    as->is_loading = 0;
+
+    as_deactivate();
     return 0;
 }
 
@@ -286,14 +321,16 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     *stackptr = USERSTACK;
 
     // Define the stack as a region with 16K size allocated for it
-    int retval = as_define_region(as, *stackptr, 4*PAGE_SIZE, 4*PAGE_SIZE, PF_R, PF_W, 0);
+    //   (this must be > 64K so argument blocks of size ARG_MAX will fit) */
+    int retval = as_define_region(as, *stackptr - 18*PAGE_SIZE, 18*PAGE_SIZE, 18*PAGE_SIZE, PF_R, PF_W, 0);
     if ( retval != 0 )
     {
         return retval;
     }
+    kprintf("fuck stack");
     struct list_head *temp = NULL;
     struct as_region_metadata *last_region = NULL;
-    list_for_each_prev(temp, &(as->list->link))
+    list_for_each_prev(temp, &(as->list->head))
     {
         last_region = list_entry(temp, struct as_region_metadata, link);
         last_region->type = STACK;
@@ -322,4 +359,17 @@ void as_destroy_region(struct as_region_metadata *to_del)
 {
     // currently nothing in as_region_metadata is kmalloced so just kfree the datastructure
     kfree(to_del);
+}
+
+char as_region_control(struct as_region_metadata* region)
+{
+    KASSERT(region != NULL);
+    char control = 0;
+    if (region->rwxflag == PF_W )
+    {
+        control |= DIRTYMASK;
+    }
+    control |= VALIDMASK;
+    return control;
+
 }

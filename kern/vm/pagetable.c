@@ -267,7 +267,7 @@ static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
     // Check if the index entry matches the vaddr and pid
     if ( is_equal(vaddr,pid,current) )
     {
-        spinlock_release(hpt->hpt_lock);
+        /* spinlock_release(hpt->hpt_lock); */
         return current;
     }
     else
@@ -280,7 +280,7 @@ static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
             // if they are then return current pointer
             if( is_equal(vaddr,pid,current) )
             {
-                spinlock_release(hpt->hpt_lock);
+                /* spinlock_release(hpt->hpt_lock); */
                 return current;
             }
             current = current->next;
