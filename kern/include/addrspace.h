@@ -84,7 +84,8 @@ struct addrspace {
 #else
     /* Put stuff here for your VM system */
     // Linked list of as_region_metadatas
-    struct as_region_metadata *list;
+    // struct as_region_metadata *list;
+    struct list *list;
     char is_loading;
 #endif
 };
@@ -154,6 +155,7 @@ void as_destroy_region(struct as_region_metadata *to_del);
  *               in the space pointed to by ENTRYPOINT.
  */
 
+char as_region_control(struct as_region_metadata* region);
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
 
 #endif /* _ADDRSPACE_H_ */

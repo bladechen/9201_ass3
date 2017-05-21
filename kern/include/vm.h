@@ -89,6 +89,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress);
 /* Allocate/free kernel heap pages (called by kmalloc/kfree) */
 vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
+void free_upages(paddr_t addr);
 
 paddr_t get_free_frame(void);
 
