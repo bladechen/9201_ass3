@@ -150,14 +150,6 @@ as_destroy(struct addrspace *as)
     struct list_head *current = NULL;
     struct list_head *tmp_head = NULL;
 
-/* @pos:    the pointer of struct list_head* to use as a loop counter.
- * @n:      tm pointer of struct list_head*
- * @l:      the list pointer
- */
-/* #define list_for_each_entry_safe(pos, n, l)\ */
-     /* for ( pos = ((l)->head.next == &((l)->head) ? NULL:list_get_entry_from_link((l)->head.next)), \ */
-
-    // TODO check this again
     list_for_each_safe(current, tmp_head, &(as->list->head))
     {
         struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);

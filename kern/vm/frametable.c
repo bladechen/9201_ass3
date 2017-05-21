@@ -145,7 +145,7 @@ vaddr_t alloc_kpages(unsigned int npages)
         {
             return (vaddr_t)0;
         }
-        DEBUG(DB_VM, "alloc_kpages via ram_stealmem %x\n", addr);
+        DEBUG(DB_VM, "alloc_kpages via ram_stealmem Number of Pages:%2d base address: %x\n", npages, addr);
 
         return PADDR_TO_KVADDR(addr);
     }

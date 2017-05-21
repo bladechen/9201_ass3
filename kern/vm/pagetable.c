@@ -80,6 +80,8 @@ void init_page_table( void )
     hpt->load = 0;
 #endif
     DEBUG(DB_VM, "Number of Page table entries = %d\nHash table Load: %2d\n", hashtable_size, hpt->load);
+
+    DEBUG(DB_VM, "Size of hpt_entry: %2d\n", sizeof(struct hpt_entry));
     unsigned long size_inbytes_pagetable = hashtable_size * sizeof(struct hpt_entry);
     DEBUG(DB_VM, "Size of Page table: %2lu\n", size_inbytes_pagetable );
 }
