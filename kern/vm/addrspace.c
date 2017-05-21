@@ -137,7 +137,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         // loop through all the regions
         copy_region(old_region, new_region);
         // add the new region to the new address space
-        as_add_to_list(*ret, new_region);
+        as_add_to_list(newas, new_region);
     }
 
     *ret = newas;

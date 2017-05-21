@@ -163,7 +163,7 @@ vaddr_t alloc_kpages(unsigned int npages)
         clear_frame(tmp, KERNEL_FRAME);
         spinlock_release(&frame_lock);
 
-        DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr);
+        /* DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr); */
         return PADDR_TO_KVADDR(tmp->p_addr);
     }
 }
@@ -180,7 +180,7 @@ static vaddr_t alloc_upages()
     clear_frame(tmp, USER_FRAME);
     spinlock_release(&frame_lock);
 
-    DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr);
+    /* DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr); */
     return PADDR_TO_KVADDR(tmp->p_addr);
 }
 
@@ -193,7 +193,7 @@ paddr_t get_free_frame(void)
 void free_upages(paddr_t paddr)
 {
     int frametable_index = paddr_2_frametable_idx(paddr);
-    DEBUG(DB_VM, "free: %x\n", paddr);
+    /* DEBUG(DB_VM, "free: %x\n", paddr); */
     spinlock_acquire(&frame_lock);
     KASSERT(is_user_frame(frame_table + frametable_index));
     spinlock_release(&frame_lock);
@@ -209,7 +209,7 @@ void free_kpages(vaddr_t addr)
     paddr_t paddr = KVADDR_TO_PADDR(addr);
 
     int frametable_index = paddr_2_frametable_idx(paddr);
-    DEBUG(DB_VM, "free: %x\n", paddr);
+    /* DEBUG(DB_VM, "free: %x\n", paddr); */
     spinlock_acquire(&frame_lock);
     KASSERT(is_kernel_frame(frame_table + frametable_index));
     spinlock_release(&frame_lock);
