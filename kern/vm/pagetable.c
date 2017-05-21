@@ -33,6 +33,7 @@ static int hash( vaddr_t vaddr , pid_t pid )
     construct_key(vaddr, pid, key);
     int index = calculate_hash(key, HASHLENGTH, hashtable_size);
 
+
     return index;
     // return 1;
 }

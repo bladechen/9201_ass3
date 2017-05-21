@@ -225,6 +225,9 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
     {
         return ENOMEM;
     }
+	/* Align the region. First, the base... */
+	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
 
     as_set_region(temp, vaddr, memsize,
                   readable | writeable | executable
@@ -368,7 +371,7 @@ char as_region_control(struct as_region_metadata* region)
 {
     KASSERT(region != NULL);
     char control = 0;
-    if (region->rwxflag == PF_W )
+    if (region->rwxflag & PF_W )
     {
         control |= DIRTYMASK;
     }

@@ -44,11 +44,10 @@ uint32_t calculate_hash(const unsigned char *ptr, int len, int mod)
     KASSERT(len > 0);
 
     uint32_t index=0;
-    while( len >= 0 )
+    while( len-- != 0)
     {
-        index = crc_table[(index ^ *ptr)&0xff] ^ (index >> 8); 
+        index = crc_table[(index ^ *ptr)&0xff] ^ (index >> 8);
         ptr++;
-        len--;
     }
     return index % mod;
 }

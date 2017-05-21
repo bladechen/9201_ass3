@@ -104,7 +104,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 		 */
 		return EFAULT;
 	}
-	DEBUG(DB_VM, "fault: 0x%x, type: %d\n", faultaddress, faulttype);
+	/* DEBUG(DB_VM, "fault: 0x%x, type: %d\n", faultaddress, faulttype); */
     pid_t pid = (pid_t) as;
 
     struct as_region_metadata* region = get_region(as, faultaddress);
