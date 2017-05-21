@@ -40,6 +40,8 @@
 
 #include <elf.h>
 #include <list.h>
+
+#define APPLICATION_STACK_SIZE 18*PAGE_SIZE
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -322,7 +324,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 
     // Define the stack as a region with 16K size allocated for it
     //   (this must be > 64K so argument blocks of size ARG_MAX will fit) */
-    int retval = as_define_region(as, *stackptr - 18*PAGE_SIZE, 18*PAGE_SIZE, 18*PAGE_SIZE, PF_R, PF_W, 0);
+    int retval = as_define_region(as, *stackptr - APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, PF_R, PF_W, 0);
+
     if ( retval != 0 )
     {
         return retval;
