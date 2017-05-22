@@ -142,12 +142,13 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         }
 
         memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE);
-        result = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
+        // Store new entry in the Page table
+        store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
 
-        if( result != 0)
-        {
-            return -1;
-        }
+        //if( !retval )
+        //{
+        //    return -1;
+        //}
     }
     return 0;
 }
@@ -182,6 +183,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
         if (result != 0)
         {
+            //DEBUG(DB_VM, " ");
             as_destroy(newas);
             return ENOMEM;
         }
@@ -398,7 +400,7 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
             //return;
         }
         tlb_lo = tlb_lo & ENTRYMASK;
-        // freeing the frame
+        // free the frame
         free_upages(tlb_lo); 
         // Delete PTE related to this
         // TODO the error case for this !!!
