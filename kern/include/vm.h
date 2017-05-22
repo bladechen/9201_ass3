@@ -51,6 +51,7 @@ enum E_FRAME_STATUS
     FREE_FRAME,
     KERNEL_FRAME,
     USER_FRAME,
+    NULL_FRAME,
 };
 
 struct frame_entry
@@ -91,6 +92,7 @@ vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
 void free_upages(paddr_t addr);
 
+bool check_user_frame(paddr_t paddr);
 paddr_t get_free_frame(void);
 
 /* TLB shootdown handling called from interprocessor_interrupt */
