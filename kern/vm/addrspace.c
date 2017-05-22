@@ -54,6 +54,7 @@
 
 static int convert_to_pages(size_t memsize);
 static struct as_region_metadata* as_create_region(void);
+static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int writeable);
 static void copy_region(struct as_region_metadata *old, struct as_region_metadata *new)
 {
     new->region_vaddr = old->region_vaddr;
@@ -61,8 +62,7 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
     new->rwxflag = old->rwxflag;
     new->type = old->type;
     new->region_vaddr = old->region_vaddr;
-
-    // The new link is created in the as_add_to_list function
+    // The new link is created in the as_add_region_to_list function
 }
 static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size_t memsize, char perm)
 {
@@ -85,7 +85,7 @@ static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size
         region->type = OTHER;
     }
 }
-static void as_add_to_list(struct addrspace *as,struct as_region_metadata *temp)
+static void as_add_region_to_list(struct addrspace *as,struct as_region_metadata *temp)
 {
     // Add region entry into the data structure
     /* if (as->list == NULL) */
@@ -115,6 +115,30 @@ as_create(void)
     return as;
 }
 
+static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metadata *region)
+{
+    KASSERT(region != NULL);
+    size_t i = 0;
+    for (i=0;i<region->npages;i++)
+    {
+        vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
+        // get a free frame
+        paddr_t newframe = get_free_frame();
+        if ( newframe == 0 )
+        {
+            return -1;
+        }
+        // Copy the old frame information into new frame
+        int result = build_pagetable_link( (pid_t)newas, vaddr, region->npages, region->rwxflag ); 
+        if (result != 0)
+        {
+            return -1;
+        }
+        memcpy((void *)newframe, (void *) vaddr, PAGE_SIZE);
+    }
+    return 0;
+}
+
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
@@ -131,13 +155,26 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         struct as_region_metadata *new_region = as_create_region();
         if (new_region == NULL)
         {
+            // Destroy the already alloced space
+            as_destroy(newas);
             return ENOMEM;
         }
         struct as_region_metadata *old_region = list_entry(old_region_link, struct as_region_metadata, link);
-        // loop through all the regions
+
+        
+        // transfer content of one region to another
         copy_region(old_region, new_region);
+
+        // Allocate a frame and copy data from old frame to new frame
+        int result = alloc_and_copy_frame(*ret, new_region);
+
+        if (result != 0)
+        {
+            as_destroy(newas);
+            return ENOMEM;
+        }
         // add the new region to the new address space
-        as_add_to_list(newas, new_region);
+        as_add_region_to_list(newas, new_region);
     }
 
     *ret = newas;
@@ -147,6 +184,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
+    if ( as == NULL )
+        return;
+
     struct list_head *current = NULL;
     struct list_head *tmp_head = NULL;
 
@@ -154,7 +194,7 @@ as_destroy(struct addrspace *as)
     {
         struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
         list_del(current);
-        as_destroy_region(tmp);
+        as_destroy_region(as, tmp);
     }
     // when we get here there should be only one node left in the list
     // So free that node and then free the as struct
@@ -224,41 +264,19 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
     as_set_region(temp, vaddr, memsize,
                   readable | writeable | executable
                  );
-    as_add_to_list(as,temp);
+    as_add_region_to_list(as,temp);
 
     // Now make the Page table mapping for the filesize bytes only
     size_t filepages = convert_to_pages(filesize);
-    size_t i = 0;
-    vaddr_t page_vaddr = 0;
-    pid_t pid = (pid_t) as;
 
-    for (i=0;i<filepages;i++)
+    // Build page table link
+    int retval = build_pagetable_link((pid_t)as, vaddr, filepages, writeable);
+
+    if ( retval != 0 )
     {
-        paddr_t paddr = get_free_frame();
-        if ( paddr == 0 )
-        {
-            return ENOMEM;
-        }
-
-        // Construct the control bits for the PTE
-        // Just set validmask for now, all entries are cacheable and none are global
-        char control = VALIDMASK;
-        page_vaddr = vaddr + i*PAGE_SIZE;
-
-        if ( writeable != 0 )
-        {
-            control |= DIRTYMASK;
-        }
-        else
-        {
-            control &= (~DIRTYMASK);
-        }
-        bool result = store_entry (page_vaddr, pid, paddr, control);
-
-        if (!result)
-        {
-            return ENOMEM;
-        }
+        // Destroy address space
+        as_destroy(as);
+        return ENOMEM;
     }
     return 0;
 }
@@ -325,7 +343,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     {
         return retval;
     }
-    kprintf("fuck stack");
+    //kprintf("fuck stack");
     struct list_head *temp = NULL;
     struct as_region_metadata *last_region = NULL;
     list_for_each_prev(temp, &(as->list->head))
@@ -353,8 +371,27 @@ static struct as_region_metadata* as_create_region(void)
     return temp;
 }
 
-void as_destroy_region(struct as_region_metadata *to_del)
+void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
+    uint32_t tlb_hi, tlb_lo;
+    size_t i = 0;
+    for (i=0;i< to_del->npages; i++)
+    {
+        vaddr_t vaddr_del = to_del->region_vaddr + i*PAGE_SIZE;
+        // free page table entry 
+        int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
+        if ( res != 0 )
+        {
+            panic("As_destroy_region has no valid page table entry??");
+            //return;
+        }
+        tlb_lo = tlb_lo & ENTRYMASK;
+        // freeing the frame
+        free_upages(tlb_lo); 
+        // Delete PTE related to this
+        // TODO the error case for this !!!
+        remove_page_entry(vaddr_del, (pid_t)as); 
+    }
     // currently nothing in as_region_metadata is kmalloced so just kfree the datastructure
     kfree(to_del);
 }
@@ -370,4 +407,43 @@ char as_region_control(struct as_region_metadata* region)
     control |= VALIDMASK;
     return control;
 
+}
+
+static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int writeable)
+{
+    vaddr_t page_vaddr = 0;
+    //pid_t pid = (pid_t) as;
+
+    size_t i = 0;
+    for (i=0;i<filepages;i++)
+    {
+        paddr_t paddr = get_free_frame();
+        if ( paddr == 0 )
+        {
+            return ENOMEM;
+        }
+
+        // Construct the control bits for the PTE
+        // Just set validmask for now, all entries are cacheable and none are global
+        char control = VALIDMASK;
+        page_vaddr = vaddr + i*PAGE_SIZE;
+
+        if ( (writeable&PF_W) != 0 )
+        {
+            control |= DIRTYMASK;
+        }
+        else
+        {
+            control &= (~DIRTYMASK);
+        }
+        bool result = store_entry(page_vaddr, pid, paddr, control);
+        if (!result)
+        {
+            // because the last page was allocated but would never get freed as the
+            // PTE for this dosent exist
+            free_kpages(PADDR_TO_KVADDR(paddr));
+            return ENOMEM;
+        }
+    }
+    return 0;
 }

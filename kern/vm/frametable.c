@@ -209,7 +209,7 @@ void free_kpages(vaddr_t addr)
     paddr_t paddr = KVADDR_TO_PADDR(addr);
 
     int frametable_index = paddr_2_frametable_idx(paddr);
-    /* DEBUG(DB_VM, "free: %x\n", paddr); */
+    //DEBUG(DB_VM, "free: %x\n", paddr);
     spinlock_acquire(&frame_lock);
     KASSERT(is_kernel_frame(frame_table + frametable_index));
     spinlock_release(&frame_lock);
