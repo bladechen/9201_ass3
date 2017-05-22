@@ -143,12 +143,12 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
 
         memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE);
         // Store new entry in the Page table
-        store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
+        bool retval = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
 
-        //if( !retval )
-        //{
-        //    return -1;
-        //}
+        if( !retval )
+        {
+            return -1;
+        }
     }
     return 0;
 }
@@ -170,6 +170,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         if (new_region == NULL)
         {
             // Destroy the already alloced space
+            DEBUG(DB_VM, "Not enough memory to allocate region in as_copy\n");
             as_destroy(newas);
             return ENOMEM;
         }
@@ -179,7 +180,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         copy_region(old_region, new_region);
 
         // Allocate a frame and copy data from old frame to new frame
-        int result = alloc_and_copy_frame(*ret, new_region, (pid_t) old);
+        int result = alloc_and_copy_frame(newas, new_region, (pid_t) old);
 
         if (result != 0)
         {
