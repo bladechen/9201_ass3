@@ -183,6 +183,7 @@ static struct hpt_entry* get_free_entry( void )
     return kmalloc(sizeof(struct hpt_entry));
 }
 
+// TODO do we need to check with the permission of the page to compare before removing?
 // Remove an entry from the hash table
 int remove_page_entry( vaddr_t vaddr, pid_t pid )
 {
@@ -441,6 +442,7 @@ void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
 // Should return error code if not successful
 int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo )
 {
+
     vaddr = vaddr & ENTRYMASK;
     /* KASSERT((vaddr & (~ENTRYMASK)) == ) */
     KASSERT(tlb_hi != NULL && tlb_lo != NULL);
@@ -459,3 +461,4 @@ int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo 
     spinlock_release(hpt->hpt_lock);
     return 0;
 }
+

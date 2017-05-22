@@ -115,26 +115,39 @@ as_create(void)
     return as;
 }
 
-static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metadata *region)
+static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metadata *region, pid_t oldpid)
 {
     KASSERT(region != NULL);
+    uint32_t tlb_hi,tlb_lo;
     size_t i = 0;
     for (i=0;i<region->npages;i++)
     {
         vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
+        int result = get_tlb_entry(vaddr,oldpid, &tlb_hi, &tlb_lo);
+        if ( result != 0)
+        {
+            // Entry couldnt be found ???
+            // TODO
+            return -1;
+        }
+        tlb_lo = tlb_lo & ENTRYMASK;
         // get a free frame
         paddr_t newframe = get_free_frame();
+        //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
         if ( newframe == 0 )
         {
+            // Destroy the frames that were allocated until now
+            // TODO
             return -1;
         }
-        // Copy the old frame information into new frame
-        int result = build_pagetable_link( (pid_t)newas, vaddr, region->npages, region->rwxflag ); 
-        if (result != 0)
+
+        memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE);
+        result = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
+
+        if( result != 0)
         {
             return -1;
         }
-        memcpy((void *)newframe, (void *) vaddr, PAGE_SIZE);
     }
     return 0;
 }
@@ -161,12 +174,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         }
         struct as_region_metadata *old_region = list_entry(old_region_link, struct as_region_metadata, link);
 
-        
         // transfer content of one region to another
         copy_region(old_region, new_region);
 
         // Allocate a frame and copy data from old frame to new frame
-        int result = alloc_and_copy_frame(*ret, new_region);
+        int result = alloc_and_copy_frame(*ret, new_region, (pid_t) old);
 
         if (result != 0)
         {
@@ -441,7 +453,7 @@ static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int 
         {
             // because the last page was allocated but would never get freed as the
             // PTE for this dosent exist
-            free_kpages(PADDR_TO_KVADDR(paddr));
+            free_upages(paddr);
             return ENOMEM;
         }
     }
