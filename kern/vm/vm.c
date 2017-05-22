@@ -138,6 +138,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         {
             panic("what happen in get_tlb_entry");
         }
+        KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 
         tlb_lo |= write_permission;
@@ -164,6 +165,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         {
             panic("what happen in get_tlb_entry");
         }
+        KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
         /* KASSERT(as->is_loading == 0); */
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 

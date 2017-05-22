@@ -269,3 +269,16 @@ void init_frametable()
     return;
 }
 
+
+bool check_user_frame(paddr_t paddr)
+{
+    int frametable_index = paddr_2_frametable_idx(paddr);
+    /* DEBUG(DB_VM, "free: %x\n", paddr); */
+    bool ret = 0;
+
+    spinlock_acquire(&frame_lock);
+    ret = is_user_frame(frame_table + frametable_index);
+    spinlock_release(&frame_lock);
+    return ret;
+
+}
