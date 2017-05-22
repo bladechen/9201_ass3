@@ -120,14 +120,26 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
     KASSERT(region != NULL);
     uint32_t tlb_hi,tlb_lo;
     size_t i = 0;
+    size_t j = 0;
     for (i=0;i<region->npages;i++)
     {
         vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
         int result = get_tlb_entry(vaddr,oldpid, &tlb_hi, &tlb_lo);
         if ( result != 0)
         {
-            // Entry couldnt be found ???
-            // TODO
+            for (j=0;j<i;j++)
+            {
+                // remove physical frames
+                vaddr = region->region_vaddr + j*PAGE_SIZE;
+                get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo);
+
+                // remove PTEs
+                remove_page_entry(vaddr, (pid_t) newas);
+                // Make frame as free
+                tlb_lo &= ENTRYMASK;
+                DEBUG(DB_VM, "Freeing the physical frames 0x%x",tlb_lo);
+                free_upages(tlb_lo);
+            }
             return -1;
         }
         tlb_lo = tlb_lo & ENTRYMASK;
@@ -136,17 +148,27 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
         if ( newframe == 0 )
         {
-            // Destroy the frames that were allocated until now
-            // TODO
+            for (j=0;j<i;j++)
+            {
+                vaddr = region->region_vaddr + j*PAGE_SIZE;
+                // remove physical frames
+                get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo);
+                // remove PTEs
+                remove_page_entry(vaddr, (pid_t) newas);
+                // Make frame as free
+                tlb_lo &= ENTRYMASK;
+                DEBUG(DB_VM, "No memory to allocate in alloc_and_copy_frame");
+                free_upages(tlb_lo);
+            }
             return -1;
         }
 
         memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE);
         // Store new entry in the Page table
         bool retval = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
-
         if( !retval )
         {
+            // TODO if this fails then something has to be done
             return -1;
         }
     }
@@ -185,6 +207,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         if (result != 0)
         {
             //DEBUG(DB_VM, " ");
+            //DEBUG(DB_VM, "Alloc and copy failed in as_copy\n");
             as_destroy(newas);
             return ENOMEM;
         }
