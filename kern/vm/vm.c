@@ -104,6 +104,10 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 		 */
 		return EFAULT;
 	}
+    if (faultaddress == 0) // NULL pointer
+    {
+        return EFAULT;
+    }
 	/* DEBUG(DB_VM, "fault: 0x%x, type: %d\n", faultaddress, faulttype); */
     pid_t pid = (pid_t) as;
 
@@ -125,6 +129,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     /*     return EFAULT; */
     /* } */
 
+    // TODO KASSERT frame page is user frame
     if (is_valid_virtual(faultaddress, pid))
     {
 

@@ -259,6 +259,7 @@ void init_frametable()
             frame->next_free = NULL;
         }
     }
+    frame_table[0].frame_status = NULL_FRAME;
     DEBUG(DB_VM, "after init lo_addr: 0x%x, hi_addr: 0x%x, total_pagecount: %d, first available addr: 0x%x\n", lo_addr, hi_addr, frametable_size, firstfree_addr);
 
     DEBUG(DB_VM, "\nTotal Frames in memory: %d\nNumber of free frames: %d\n", frametable_size, free_list_count);
