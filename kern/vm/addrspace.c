@@ -129,21 +129,6 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         {
             // father not allocate page for that vaddr, may be in bss/data . static int a[100000]
             continue;
-            /* for (j=0;j<i;j++) */
-            /* { */
-                /* as_destroy_region(newas, region); */
-                // remove physical frames
-                /* vaddr = region->region_vaddr + j*PAGE_SIZE; */
-                /* KASSERT(0 == get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo)); */
-                /*  */
-                /* // remove PTEs */
-                /* KASSERT(0 == remove_page_entry(vaddr, (pid_t) newas)); */
-                /* // Make frame as free */
-                /* tlb_lo &= ENTRYMASK; */
-                /* DEBUG(DB_VM, "Freeing the physical frames 0x%x",tlb_lo); */
-                /* free_upages(tlb_lo); */
-            /* } */
-            /* return -1; */
         }
         tlb_lo = tlb_lo & ENTRYMASK;
         // get a free frame
@@ -152,20 +137,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         if ( newframe == 0 )
         {
             DEBUG(DB_VM, "i have no enough frame\n");
-            /* for (j=0;j<i;j++) */
-            /* { */
-                as_destroy_region(newas, region);
-                /* vaddr = region->region_vaddr + j*PAGE_SIZE; */
-                /* // remove physical frames */
-                /* KASSERT(0 == get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo)); */
-                /* // remove PTEs */
-                /* KASSERT(0 == remove_page_entry(vaddr, (pid_t) newas)); */
-                /* // Make frame as free */
-                /* tlb_lo &= ENTRYMASK; */
-                /* DEBUG(DB_VM, "No memory to allocate in alloc_and_copy_frame"); */
-                /* free_upages(tlb_lo); */
-            /* } */
-
+            as_destroy_region(newas, region);
             return -1;
         }
 
@@ -176,7 +148,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         {
 
             as_destroy_region(newas, region);
-            DEBUG(DB_VM, "i have no enough page\n");
+            DEBUG(DB_VM, "i dont have enough pages\n");
             // TODO if this fails then something has to be done
             return -1;
         }
@@ -215,7 +187,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
         if (result != 0)
         {
-            //DEBUG(DB_VM, " ");
             //DEBUG(DB_VM, "Alloc and copy failed in as_copy\n");
             as_destroy(newas);
             return ENOMEM;
