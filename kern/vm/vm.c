@@ -131,14 +131,11 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     /* } */
 
     // TODO KASSERT frame page is user frame
-    if (is_valid_virtual(faultaddress, pid))
+    int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+    /* if (is_valid_virtual(faultaddress, pid)) */
+    if (ret == 0)
     {
 
-        int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
-        if (ret != 0)
-        {
-            panic("what happen in get_tlb_entry");
-        }
         KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 
@@ -161,7 +158,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
             free_upages(frame_addr);
             return ENOMEM;
         }
-        int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+        ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
         if (ret != 0)
         {
             panic("what happen in get_tlb_entry");
@@ -172,7 +169,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
         tlb_lo |= write_permission;
         tlb_random(tlb_hi, tlb_lo);
-
 
     }
     return 0;
