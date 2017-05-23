@@ -187,7 +187,13 @@ static vaddr_t alloc_upages()
 // Returns a free frame from the frame table
 paddr_t get_free_frame(void)
 {
-    return KVADDR_TO_PADDR(alloc_upages());
+
+    vaddr_t addr = alloc_upages();
+    if (addr == 0)
+    {
+        return 0;
+    }
+    return KVADDR_TO_PADDR(addr);
 }
 
 void free_upages(paddr_t paddr)

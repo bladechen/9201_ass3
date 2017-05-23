@@ -57,11 +57,11 @@ static struct as_region_metadata* as_create_region(void);
 static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int writeable);
 static void copy_region(struct as_region_metadata *old, struct as_region_metadata *new)
 {
+    KASSERT(old != NULL && new != NULL);
     new->region_vaddr = old->region_vaddr;
     new->npages = old->npages;
     new->rwxflag = old->rwxflag;
     new->type = old->type;
-    new->region_vaddr = old->region_vaddr;
     // The new link is created in the as_add_region_to_list function
 }
 static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size_t memsize, char perm)
@@ -120,27 +120,30 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
     KASSERT(region != NULL);
     uint32_t tlb_hi,tlb_lo;
     size_t i = 0;
-    size_t j = 0;
+    /* size_t j = 0; */
     for (i=0;i<region->npages;i++)
     {
         vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
         int result = get_tlb_entry(vaddr,oldpid, &tlb_hi, &tlb_lo);
         if ( result != 0)
         {
-            for (j=0;j<i;j++)
-            {
+            // father not allocate page for that vaddr, may be in bss/data . static int a[100000]
+            continue;
+            /* for (j=0;j<i;j++) */
+            /* { */
+                /* as_destroy_region(newas, region); */
                 // remove physical frames
-                vaddr = region->region_vaddr + j*PAGE_SIZE;
-                get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo);
-
-                // remove PTEs
-                remove_page_entry(vaddr, (pid_t) newas);
-                // Make frame as free
-                tlb_lo &= ENTRYMASK;
-                DEBUG(DB_VM, "Freeing the physical frames 0x%x",tlb_lo);
-                free_upages(tlb_lo);
-            }
-            return -1;
+                /* vaddr = region->region_vaddr + j*PAGE_SIZE; */
+                /* KASSERT(0 == get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo)); */
+                /*  */
+                /* // remove PTEs */
+                /* KASSERT(0 == remove_page_entry(vaddr, (pid_t) newas)); */
+                /* // Make frame as free */
+                /* tlb_lo &= ENTRYMASK; */
+                /* DEBUG(DB_VM, "Freeing the physical frames 0x%x",tlb_lo); */
+                /* free_upages(tlb_lo); */
+            /* } */
+            /* return -1; */
         }
         tlb_lo = tlb_lo & ENTRYMASK;
         // get a free frame
@@ -148,18 +151,21 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
         if ( newframe == 0 )
         {
-            for (j=0;j<i;j++)
-            {
-                vaddr = region->region_vaddr + j*PAGE_SIZE;
-                // remove physical frames
-                get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo);
-                // remove PTEs
-                remove_page_entry(vaddr, (pid_t) newas);
-                // Make frame as free
-                tlb_lo &= ENTRYMASK;
-                DEBUG(DB_VM, "No memory to allocate in alloc_and_copy_frame");
-                free_upages(tlb_lo);
-            }
+            DEBUG(DB_VM, "i have no enough frame\n");
+            /* for (j=0;j<i;j++) */
+            /* { */
+                as_destroy_region(newas, region);
+                /* vaddr = region->region_vaddr + j*PAGE_SIZE; */
+                /* // remove physical frames */
+                /* KASSERT(0 == get_tlb_entry(vaddr, (pid_t)newas, &tlb_hi, &tlb_lo)); */
+                /* // remove PTEs */
+                /* KASSERT(0 == remove_page_entry(vaddr, (pid_t) newas)); */
+                /* // Make frame as free */
+                /* tlb_lo &= ENTRYMASK; */
+                /* DEBUG(DB_VM, "No memory to allocate in alloc_and_copy_frame"); */
+                /* free_upages(tlb_lo); */
+            /* } */
+
             return -1;
         }
 
@@ -168,6 +174,9 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         bool retval = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
         if( !retval )
         {
+
+            as_destroy_region(newas, region);
+            DEBUG(DB_VM, "i have no enough page\n");
             // TODO if this fails then something has to be done
             return -1;
         }
@@ -233,6 +242,7 @@ as_destroy(struct addrspace *as)
         struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
         list_del(current);
         as_destroy_region(as, tmp);
+        kfree(tmp);
     }
     // when we get here there should be only one node left in the list
     // So free that node and then free the as struct
@@ -355,7 +365,6 @@ as_complete_load(struct addrspace *as)
     }
     // when we get here there should be only one node left in the list
     // So free that node and then free the as struct
-    /* as_destroy_region(as->list); */
 
     as->is_loading = 0;
 
@@ -411,27 +420,33 @@ static struct as_region_metadata* as_create_region(void)
 
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
+    KASSERT(as != NULL && to_del != NULL);
     uint32_t tlb_hi, tlb_lo;
     size_t i = 0;
     for (i=0;i< to_del->npages; i++)
     {
         vaddr_t vaddr_del = to_del->region_vaddr + i*PAGE_SIZE;
-        // free page table entry 
+        // free page table entry
         int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
         if ( res != 0 )
         {
-            panic("As_destroy_region has no valid page table entry??");
+            // FIXME, maybe the stack area? the program is not running yet because of running out of memory?
+            // TODO we should handle the error case, there is no valid entry in tlb?
+            /* panic("As_destroy_region has no valid page table entry??"); */
+            continue;
             //return;
+
         }
         tlb_lo = tlb_lo & ENTRYMASK;
         // free the frame
-        free_upages(tlb_lo); 
+        free_upages(tlb_lo);
         // Delete PTE related to this
         // TODO the error case for this !!!
-        remove_page_entry(vaddr_del, (pid_t)as); 
+        // i don't think we should handle this error, kassert it only.
+        KASSERT(0 == remove_page_entry(vaddr_del, (pid_t)as));
     }
     // currently nothing in as_region_metadata is kmalloced so just kfree the datastructure
-    kfree(to_del);
+    /* kfree(to_del); */
 }
 
 char as_region_control(struct as_region_metadata* region)
