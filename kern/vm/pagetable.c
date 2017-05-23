@@ -224,13 +224,14 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
         else
         {
 
-            /* kprintf("%x, %x\n", (unsigned int)current, (unsigned int)current->next); */
+            /* kprintf("+%x, %x\n", (unsigned int)current, (unsigned int)current->next); */
             unsigned int tmp = (unsigned int ) current->next->next;
+            struct hpt_entry* fuck = current->next;
             memcpy(current, current->next, sizeof(*current));
             /* kprintf("-%x, %x\n", (unsigned int)current, (unsigned int)current->next); */
             /* KASSERT(current->next != NULL); */
+            kfree(fuck);
             current->next = (struct hpt_entry*) tmp;
-            kfree(current->next);
 #ifdef DEBUGLOAD
             hpt->load--;
 #endif
