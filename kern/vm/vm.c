@@ -31,6 +31,7 @@ void vm_bootstrap(void)
     /* init_coreswap(); */
     DEBUG(DB_VM, "init_frametable ing....\n");
     init_page_table();
+    test_pagetable();
     init_frametable();
     DEBUG(DB_VM, "init_frametable finish\n");
     /* vaddr_t p = alloc_kpages(1); */

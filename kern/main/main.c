@@ -213,7 +213,8 @@ sys_reboot(int code)
 void
 kmain(char *arguments)
 {
-    dbflags = DB_VM;
+    dbflags = 0;
+    //dbflags = DB_VM;
 	boot();
 
 	menu(arguments);

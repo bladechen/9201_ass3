@@ -110,4 +110,5 @@ int get_tlb_entry(  vaddr_t vaddr , pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_l
 // Initialise the hash table and set the fields to the initial values
 int init_hashtable( void );
 
+void test_pagetable( void );
 #endif

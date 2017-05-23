@@ -33,7 +33,6 @@ static int hash( vaddr_t vaddr , pid_t pid )
     construct_key(vaddr, pid, key);
     int index = calculate_hash(key, HASHLENGTH, hashtable_size);
 
-
     return index;
     // return 1;
 }
@@ -105,10 +104,18 @@ static bool is_colliding( vaddr_t vaddr, pid_t pid )
     int index = hash(vaddr,pid);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
 
-    if ( hpt->hpt_entry[index].next == (struct hpt_entry *) emptypointer )
+    if (    (hpt->hpt_entry[index].vaddr == (vaddr_t)emptypointer) && 
+            (hpt->hpt_entry[index].pid == 0) &&
+            (hpt->hpt_entry[index].control == 0) &&
+            (hpt->hpt_entry[index].paddr == (paddr_t) emptypointer)
+       )
     {
         return false;
     }
+   /* if ( hpt->hpt_entry[index].next == (struct hpt_entry *) emptypointer )
+    {
+        return false;
+    }*/
     return true;
 }
 
@@ -151,6 +158,8 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
     }
     else
     {
+       // kprintf("in colliding code\n");
+        //kprintf("index: %d vaddr:%x pid:%x paddr:%x\n",index,vaddr,pid,paddr);
         // index pointer
         struct hpt_entry *current = &(hpt->hpt_entry[index]);
         // The chained pointer
@@ -197,6 +206,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
     struct hpt_entry *current = &(hpt->hpt_entry[index]);
     struct hpt_entry *prev;
 
+    //kprintf("\tIndex is:%d, vaddr: %x and pid: %x\n",index,vaddr,pid);
     // Check if the index matches the vaddr and pid
     if ( is_equal(vaddr,pid,current) )
     {
@@ -205,6 +215,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
             set_page_zero(current);
 
 #ifdef DEBUGLOAD
+            //kprintf("in here\n");
             hpt->load--;
 #endif
             spinlock_release(hpt->hpt_lock);
@@ -216,6 +227,9 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
             memcpy(current, current->next, sizeof(*current));
             current->next = current->next->next;
             kfree(current->next);
+#ifdef DEBUGLOAD
+            hpt->load--;
+#endif
             spinlock_release(hpt->hpt_lock);
             return 0;
         }
@@ -462,3 +476,61 @@ int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo 
     return 0;
 }
 
+void test_pagetable( void )
+{
+    pid_t a = 0x40000000;
+    vaddr_t vaddr = 0x400000;
+    const int HASHNUM = 20;
+    int indexarr[HASHNUM];
+
+    (void) indexarr;
+    kprintf("Testing HASH INDEXES\n");
+    int i = 0;
+    /*
+    for (i = 0;i<HASHNUM;i++)
+    {
+    indexarr[i] = hash(vaddr,a);
+    kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],vaddr,a); 
+    a++;
+    }
+    a=a-HASHNUM;
+    kprintf("\n");
+    for (i = 0;i<HASHNUM;i++)
+    {
+        indexarr[i] = hash(vaddr,a);
+        kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],a,vaddr); 
+        a++;
+    }
+
+    kprintf("\nBuilding Page table entries\n");
+
+    for (i = 0;i<HASHNUM;i++)
+    {
+        store_entry(vaddr, a, 1, 0);
+        kprintf("%d: PTE load: %d for vaddr: %x and pid: %x\n",i,hpt->load,vaddr,a); 
+        vaddr+=PAGE_SIZE;
+    }
+
+    vaddr = vaddr - HASHNUM*PAGE_SIZE;
+    for (i = 0;i<HASHNUM;i++)
+    {
+        int status = remove_page_entry(vaddr, a);
+        kprintf("%d: pte load: %d return stat: %d for vaddr: %x and pid: %x\n",i, hpt->load,status,vaddr,a); 
+        vaddr+=PAGE_SIZE;
+    }
+    kprintf("\nBuilding Page table entries again\n");
+
+    for (i = 0;i<HASHNUM;i++)
+    {
+        store_entry(vaddr, a, (i+1)*PAGE_SIZE, 0);
+    }
+
+*/
+    kprintf("\ntesting chaining\n");
+    for (i = 0;i<HASHNUM;i++)
+    {
+        int status = store_entry(vaddr, a,(i+1)*PAGE_SIZE,0);
+        kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a); 
+    }
+
+}

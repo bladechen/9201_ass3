@@ -55,6 +55,7 @@
 static int convert_to_pages(size_t memsize);
 static struct as_region_metadata* as_create_region(void);
 static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int writeable);
+static void loop_through_region(struct addrspace *as);
 static void copy_region(struct as_region_metadata *old, struct as_region_metadata *new)
 {
     KASSERT(old != NULL && new != NULL);
@@ -159,12 +160,16 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
+
+    //DEBUG(DB_VM, "Fork Started on Process 0x%p\n", old);
     struct addrspace *newas;
 
     newas = as_create();
     if (newas==NULL) {
         return ENOMEM;
     }
+
+    //DEBUG(DB_VM, "New addrspace created which is 0x%p\n",newas);
 
     struct list_head *old_region_link=NULL;
     list_for_each(old_region_link, &(old->list->head))
@@ -195,6 +200,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         as_add_region_to_list(newas, new_region);
     }
 
+    loop_through_region(newas);
     *ret = newas;
     return 0;
 }
@@ -311,30 +317,21 @@ as_prepare_load(struct addrspace *as)
     return 0;
 }
 
-int
-as_complete_load(struct addrspace *as)
+static void loop_through_region(struct addrspace *as)
 {
-    /*
-     * Write this.
-     */
-
     struct list_head *current = NULL;
     struct list_head *tmp_head = NULL;
 
-/* @pos:    the pointer of struct list_head* to use as a loop counter.
- * @n:      tm pointer of struct list_head*
- * @l:      the list pointer
- */
-/* #define list_for_each_entry_safe(pos, n, l)\ */
-     /* for ( pos = ((l)->head.next == &((l)->head) ? NULL:list_get_entry_from_link((l)->head.next)), \ */
-
-    // TODO check this again
     list_for_each_safe(current, tmp_head, &(as->list->head))
     {
         struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
         DEBUG(DB_VM, " region : 0x%x, page: %d\n", tmp->region_vaddr, tmp->npages);
     }
-    // when we get here there should be only one node left in the list
+}
+int
+as_complete_load(struct addrspace *as)
+{
+       // when we get here there should be only one node left in the list
     // So free that node and then free the as struct
 
     as->is_loading = 0;
