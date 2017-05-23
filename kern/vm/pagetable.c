@@ -538,4 +538,33 @@ void test_pagetable( void )
         kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a);
     }
 
+    kprintf("Printing CHAIN\n");
+    int index = hash(vaddr,a);
+    struct hpt_entry *current = &(hpt->hpt_entry[index]);
+    while(current != NULL)
+    {
+        kprintf("vaddr: %x pid: %x paddr: %x\n", current->vaddr, current->pid, current->paddr); 
+        current = current->next;
+    }
+
+    kprintf("Removing CHAIN\n");
+    index = hash(vaddr,a);
+    current = &(hpt->hpt_entry[index]);
+    i = 1;
+    while(current->next != NULL)
+    {
+        int result = remove_page_entry(vaddr,a);
+        kprintf("%d Status: %d removed link from chain\n",i++, result);
+        index = hash(vaddr,a);
+        current = &(hpt->hpt_entry[index]);
+    }
+        int result = remove_page_entry(vaddr,a);
+        kprintf("%d Status: %d removed link from chain\n",i++, result);
+        index = hash(vaddr,a);
+        current = &(hpt->hpt_entry[index]);
+
+        result = remove_page_entry(vaddr,a);
+        kprintf("%d Status: %d removed link from chain\n",i++, result);
+        index = hash(vaddr,a);
+        current = &(hpt->hpt_entry[index]);
 }
