@@ -104,7 +104,7 @@ static bool is_colliding( vaddr_t vaddr, pid_t pid )
     int index = hash(vaddr,pid);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
 
-    if (    (hpt->hpt_entry[index].vaddr == (vaddr_t)emptypointer) && 
+    if (    (hpt->hpt_entry[index].vaddr == (vaddr_t)emptypointer) &&
             (hpt->hpt_entry[index].pid == 0) &&
             (hpt->hpt_entry[index].control == 0) &&
             (hpt->hpt_entry[index].paddr == (paddr_t) emptypointer)
@@ -224,8 +224,12 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
         else
         {
 
+            /* kprintf("%x, %x\n", (unsigned int)current, (unsigned int)current->next); */
+            unsigned int tmp = (unsigned int ) current->next->next;
             memcpy(current, current->next, sizeof(*current));
-            current->next = current->next->next;
+            /* kprintf("-%x, %x\n", (unsigned int)current, (unsigned int)current->next); */
+            /* KASSERT(current->next != NULL); */
+            current->next = (struct hpt_entry*) tmp;
             kfree(current->next);
 #ifdef DEBUGLOAD
             hpt->load--;
@@ -490,7 +494,7 @@ void test_pagetable( void )
     for (i = 0;i<HASHNUM;i++)
     {
     indexarr[i] = hash(vaddr,a);
-    kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],vaddr,a); 
+    kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],vaddr,a);
     a++;
     }
     a=a-HASHNUM;
@@ -498,7 +502,7 @@ void test_pagetable( void )
     for (i = 0;i<HASHNUM;i++)
     {
         indexarr[i] = hash(vaddr,a);
-        kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],a,vaddr); 
+        kprintf("%d: Index is %d for vaddr: %x and pid: %x\n",i,indexarr[i],a,vaddr);
         a++;
     }
 
@@ -507,7 +511,7 @@ void test_pagetable( void )
     for (i = 0;i<HASHNUM;i++)
     {
         store_entry(vaddr, a, 1, 0);
-        kprintf("%d: PTE load: %d for vaddr: %x and pid: %x\n",i,hpt->load,vaddr,a); 
+        kprintf("%d: PTE load: %d for vaddr: %x and pid: %x\n",i,hpt->load,vaddr,a);
         vaddr+=PAGE_SIZE;
     }
 
@@ -515,7 +519,7 @@ void test_pagetable( void )
     for (i = 0;i<HASHNUM;i++)
     {
         int status = remove_page_entry(vaddr, a);
-        kprintf("%d: pte load: %d return stat: %d for vaddr: %x and pid: %x\n",i, hpt->load,status,vaddr,a); 
+        kprintf("%d: pte load: %d return stat: %d for vaddr: %x and pid: %x\n",i, hpt->load,status,vaddr,a);
         vaddr+=PAGE_SIZE;
     }
     kprintf("\nBuilding Page table entries again\n");
@@ -530,7 +534,7 @@ void test_pagetable( void )
     for (i = 0;i<HASHNUM;i++)
     {
         int status = store_entry(vaddr, a,(i+1)*PAGE_SIZE,0);
-        kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a); 
+        kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a);
     }
 
 }
