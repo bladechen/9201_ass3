@@ -64,7 +64,7 @@ void tlb_invalid_by_vaddr(vaddr_t vaddr);
 void tlb_invalid_by_paddr(paddr_t paddr);
 
 void tlb_flush(void);
-void tlb_force_write(vaddr_t vaddr, paddr_t paddr);
+void tlb_force_write(uint32_t hi, uint32_t lo);
 /*
  * TLB entry fields.
  *

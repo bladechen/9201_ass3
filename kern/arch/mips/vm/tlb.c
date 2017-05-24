@@ -93,3 +93,9 @@ void tlb_flush()
 	splx(spl);
 }
 
+void tlb_force_write(uint32_t hi, uint32_t lo)
+{
+    int spl = splhigh();
+    tlb_random(hi, lo);
+    splx(spl);
+}

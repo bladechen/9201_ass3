@@ -310,7 +310,9 @@ static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
     }
     // if we get here then current should be NULL
     /* spinlock_release(hpt->hpt_lock); */
-    return current;
+    KASSERT(current == NULL);
+    return NULL;
+    /* return current; */
 }
 
 /* // TODO */
@@ -326,7 +328,7 @@ static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
     KASSERT(current != NULL);
     KASSERT(spinlock_do_i_hold(hpt->hpt_lock));
     // Fixed as vaddr is only the top 20 bits now
-    return ((vaddr == current->vaddr) && (pid == current->pid));
+    return ((vaddr == current->vaddr) && (pid == current->pid) && pid != 0);
 }
 
 // Is this entry present in the hash table already?
@@ -483,14 +485,14 @@ int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo 
 
 void test_pagetable( void )
 {
-    pid_t a = 0x40000000;
-    vaddr_t vaddr = 0x400000;
-    const int HASHNUM = 20;
-    int indexarr[HASHNUM];
-
-    (void) indexarr;
-    kprintf("Testing HASH INDEXES\n");
-    int i = 0;
+    /* pid_t a = 0x40000000; */
+    /* vaddr_t vaddr = 0x400000; */
+    /* const int HASHNUM = 20; */
+    /* int indexarr[HASHNUM]; */
+    /*  */
+    /* (void) indexarr; */
+    /* #<{(| kprintf("Testing HASH INDEXES\n"); |)}># */
+    /* int i = 0; */
     /*
     for (i = 0;i<HASHNUM;i++)
     {
@@ -531,11 +533,11 @@ void test_pagetable( void )
     }
 
 */
-    kprintf("\ntesting chaining\n");
-    for (i = 0;i<HASHNUM;i++)
-    {
-        int status = store_entry(vaddr, a,(i+1)*PAGE_SIZE,0);
-        kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a);
-    }
+    /* kprintf("\ntesting chaining\n"); */
+    /* for (i = 0;i<HASHNUM;i++) */
+    /* { */
+    /*     int status = store_entry(vaddr, a,(i+1)*PAGE_SIZE,0); */
+    /*     kprintf("%d:return stat: %d for vaddr: %x and pid: %x\n",i,status,vaddr,a); */
+    /* } */
 
 }

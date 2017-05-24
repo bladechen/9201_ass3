@@ -1,4 +1,5 @@
 #include <types.h>
+#include <spl.h>
 #include <elf.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -6,6 +7,7 @@
 #include <current.h>
 #include <proc.h>
 #include <addrspace.h>
+#include <mips/tlb.h>
 #include <vm.h>
 #include <machine/tlb.h>
 #include <pagetable.h>
@@ -140,7 +142,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 
         tlb_lo |= write_permission;
-        tlb_random(tlb_hi, tlb_lo);
+        tlb_force_write(tlb_hi, tlb_lo);
     }
     else
     {
@@ -168,7 +170,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 
         tlb_lo |= write_permission;
-        tlb_random(tlb_hi, tlb_lo);
+        tlb_force_write(tlb_hi, tlb_lo);
 
     }
     return 0;
