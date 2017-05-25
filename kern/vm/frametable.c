@@ -109,7 +109,7 @@ static struct frame_entry* find_free_frame(unsigned int npages)
     spinlock_acquire(&free_frame_list_lock);
     if (free_entry_list == NULL)
     {
-        spinlock_release(&frame_lock);
+        spinlock_release(& free_frame_list_lock);
         return NULL;
 
     }
