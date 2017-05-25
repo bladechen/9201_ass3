@@ -271,6 +271,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
     }
 }
 
+
 // TODO what about the control bits, should we check against that? I dont think so
 // Gets the physical frame address in memory
 static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
@@ -479,6 +480,23 @@ int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo 
     *tlb_hi = (pte->vaddr & ENTRYMASK);
     // Construct the lo entry for the tlb
     *tlb_lo = ((pte->paddr &ENTRYMASK ) | ((pte->control & CONTROLMASK) << 8));
+    spinlock_release(hpt->hpt_lock);
+    return 0;
+}
+int update_page_entry(vaddr_t vaddr , pid_t pid, paddr_t paddr, char control_flag)
+{
+    vaddr = vaddr & ENTRYMASK;
+    KASSERT(paddr !=  0 );
+    spinlock_acquire(hpt->hpt_lock);
+    struct hpt_entry *pte = get_page(vaddr, pid);
+    if (pte == NULL)
+    {
+        spinlock_release(hpt->hpt_lock);
+        return -1;
+    }
+
+    pte->control = control_flag;
+    pte->paddr = paddr;
     spinlock_release(hpt->hpt_lock);
     return 0;
 }

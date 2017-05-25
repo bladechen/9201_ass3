@@ -118,6 +118,7 @@ as_create(void)
 
 static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metadata *region, pid_t oldpid)
 {
+    // copy on write, not alloc new frame .
     KASSERT(region != NULL);
     uint32_t tlb_hi,tlb_lo;
     size_t i = 0;
@@ -131,28 +132,31 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
             // father not allocate page for that vaddr, may be in bss/data . static int a[100000]
             continue;
         }
-        tlb_lo = tlb_lo & ENTRYMASK;
+        paddr_t paddr = tlb_lo & ENTRYMASK;
+        inc_frame_ref(paddr);
         // get a free frame
-        paddr_t newframe = get_free_frame();
-        //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
-        if ( newframe == 0 )
-        {
-            DEBUG(DB_VM, "i have no enough frame\n");
-            as_destroy_region(newas, region);
-            return -1;
-        }
-
-        memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE);
+        /* paddr_t newframe = get_free_frame(); */
+        /* //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe); */
+        /* if ( newframe == 0 ) */
+        /* { */
+        /*     DEBUG(DB_VM, "i have no enough frame\n"); */
+        /*     as_destroy_region(newas, region); */
+        /*     return -1; */
+        /* } */
+        /*  */
+        /* memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE); */
         // Store new entry in the Page table
-        bool retval = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
+        // no matter writable or not, set dirty bit to 0
+        bool retval = store_entry( vaddr, (pid_t) newas, paddr, (as_region_control(region) &(~DIRTYMASK) ));
         if( !retval )
         {
-
             as_destroy_region(newas, region);
             DEBUG(DB_VM, "i dont have enough pages\n");
             // TODO if this fails then something has to be done
             return -1;
         }
+        // set father also readonly
+        reset_mask(vaddr, oldpid, DIRTYMASK);
     }
     return 0;
 }

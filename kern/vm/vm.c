@@ -19,6 +19,7 @@
 
 
 struct lock *vm_lock = NULL;
+extern struct frame_entry* free_entry_list;
 
 void vm_bootstrap(void)
 {
@@ -35,7 +36,8 @@ void vm_bootstrap(void)
     init_page_table();
     test_pagetable();
     init_frametable();
-    DEBUG(DB_VM, "init_frametable finish\n");
+
+    DEBUG(DB_VM, "init_frametable 0x%p finish\n", free_entry_list);
     /* vaddr_t p = alloc_kpages(1); */
     /* DEBUG(DB_VM, "alloc 0x%x\n", p); */
     /*  */
@@ -122,22 +124,40 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     }
     if ( (faulttype == VM_FAULT_READONLY) )
     {
-        KASSERT(!(region->rwxflag & PF_W));
-        DEBUG(DB_VM, "not writable 0x%x\n", faultaddress);
-        return EFAULT;
-    }
-    /* if (!is_valid_virtual(faultaddress, pid)) */
-    /* { */
-    /*     DEBUG(DB_VM, "not in page table 0x%x\n", faultaddress); */
-    /*     return EFAULT; */
-    /* } */
+        if (!(region ->rwxflag & PF_W))
+        {
+            DEBUG(DB_VM, "not writable 0x%x\n", faultaddress);
+            return EFAULT;
+        }
+        // this region is writable
+        else // copy on write, readonly occur on writable region
+        {
+            KASSERT(0 == get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo));
+            paddr_t old_frame = tlb_lo&PAGE_FRAME;
+            paddr_t frame = dup_frame(old_frame);
+            if (frame == 0)
+            {
+                DEBUG(DB_VM, "copy on write, i think i am running out of mem!\n");
+                return ENOMEM;
+            }
+            else if (frame == old_frame)
+            {
+                set_mask(faultaddress, pid, DIRTYMASK);
+                tlb_flush();
+            }
+            else
+            {
+                update_page_entry(faultaddress, pid, frame, as_region_control(region));
+                tlb_flush();
 
-    // TODO KASSERT frame page is user frame
+            }
+            /* return 0; */
+        }
+    }
+
     int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
-    /* if (is_valid_virtual(faultaddress, pid)) */
     if (ret == 0)
     {
-
         KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
         int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
 

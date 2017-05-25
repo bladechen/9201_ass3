@@ -80,6 +80,9 @@ bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
 int remove_page_entry( vaddr_t vaddr, pid_t pid );
 
 
+int update_page_entry(vaddr_t vaddr , pid_t pid, paddr_t paddr, char control_flag);
+
+
 // Allocate a page and return the index
 // struct hpt_entry * allocate_page( void );
 

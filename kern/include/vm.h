@@ -65,6 +65,7 @@ struct frame_entry
 
     struct frame_entry* next_free;
 
+    int reference_count;
     // K's additions
     bool pinned;
 };
@@ -91,7 +92,9 @@ int vm_fault(int faulttype, vaddr_t faultaddress);
 vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
 void free_upages(paddr_t addr);
+void inc_frame_ref(paddr_t paddr);
 
+paddr_t dup_frame(paddr_t paddr);
 bool check_user_frame(paddr_t paddr);
 paddr_t get_free_frame(void);
 
