@@ -141,15 +141,15 @@ Address space
                 };
 
 Frame Table
-    . frame table manages all the physical memory with a array, the size of array is TOTAL_MEM_BYTES/4096,
+    . frame table manages all the physical memory within a array, the size of array is TOTAL_MEM_BYTES/4096,
     . free entry in the frame table is linked as a list so that kernel can alloc/free a page in O(1).
 
 Vm_fault
     . it behaves the same as the flow chart in the extended lecture slide.
     1. if the faultaddress is NULL or can not find current proc region via this faultaddress, then return EFAULT, otherwise goto step 2
-    2. if the fault_type is VM_FAULT_READONLY, it should not happened in basic asst, also return EFAULT, otherwise goto step 3
+    2. if the fault_type is VM_FAULT_READONLY, it should not happen in basic asst, also return EFAULT, otherwise goto step 3
     3. find page in hash page table, if can be found, write the entry into tlb, then return 0. otherwise goto step 4
-    4. if at this step, means the page is not insert into page table(such as stack/bss segment),
+    4. if at this step, means that the page is not inserted into page table(such as stack/bss segment),
        get a new frame from frame_table, if can not find, return ENOMEM
        otherwise store vaddr/paddr into page_table, if page_table is full, return ENOMEM
        otherwise also store vaddr/paddr into tlb, then return 0
