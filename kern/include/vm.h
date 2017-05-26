@@ -81,7 +81,7 @@ enum  E_PAGETABLE_ENTRY_STATUS
 
 inline static vaddr_t upper_addr(vaddr_t addr, int pages)
 {
-    KASSERT(pages >= 1);
+    KASSERT(pages >= 0);
     return (addr + (pages << 12));
 
 }

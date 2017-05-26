@@ -150,6 +150,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         bool retval = store_entry( vaddr, (pid_t) newas, paddr, (as_region_control(region) &(~DIRTYMASK) ));
         if( !retval )
         {
+            free_upages(paddr);
             as_destroy_region(newas, region);
             DEBUG(DB_VM, "i dont have enough pages\n");
             // TODO if this fails then something has to be done
@@ -435,6 +436,37 @@ static struct as_region_metadata* as_create_region(void)
     return temp;
 }
 
+static void as_destroy_part_of_region(struct addrspace *as, struct as_region_metadata * region, int begin, int npages)
+{
+    KASSERT(as != NULL &&  region != NULL);
+    vaddr_t start = region->region_vaddr;
+    vaddr_t end = region->region_vaddr  + (region->npages << 12);
+    uint32_t tlb_hi, tlb_lo;
+    /* size_t i = 0; */
+    for (int i=0; i < npages; i++)
+    {
+        vaddr_t vaddr_del = begin + i*PAGE_SIZE;
+        if (vaddr_del>= start && vaddr_del < end)
+        {
+        // free page table entry
+            int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
+            if ( res != 0 )
+            {
+                continue;
+            }
+            tlb_lo = tlb_lo & ENTRYMASK;
+            // free the frame
+            free_upages(tlb_lo);
+            // Delete PTE related to this
+            // TODO the error case for this !!!
+            // i don't think we should handle this error, kassert it only.
+            KASSERT(0 == remove_page_entry(vaddr_del, (pid_t)as));
+        }
+    }
+
+
+}
+
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
     KASSERT(as != NULL && to_del != NULL);
@@ -468,7 +500,7 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 
 int as_get_heap_break(struct addrspace* as, intptr_t amount)
 {
-    KASSERT(amount >= 0 && (amount & PAGE_FRAME) == 0);
+    KASSERT(amount >= 0 && (amount & (~PAGE_FRAME)) == 0);
     KASSERT(as != NULL);
     struct list_head *current = NULL;
     struct list_head *tmp_head = NULL;
@@ -511,6 +543,7 @@ int as_get_heap_break(struct addrspace* as, intptr_t amount)
             bool retval = store_entry( vaddr, (pid_t)as, newframe, (as_region_control(tmp) &(~DIRTYMASK) ));
             if( !retval )
             {
+                free_upages(newframe);
                 DEBUG(DB_VM, "i dont have enough pages\n");
                 goto alloc_heap_fail;
             }
@@ -519,6 +552,7 @@ int as_get_heap_break(struct addrspace* as, intptr_t amount)
         tmp->npages += (amount>>12);
         return heap_break;
 alloc_heap_fail:
+        as_destroy_part_of_region(as, tmp, heap_break, inc_pages);
         //TODO deallocte the frame, page table
         return -1;
     }

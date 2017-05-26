@@ -214,7 +214,7 @@ void
 kmain(char *arguments)
 {
     dbflags = 0;
-    dbflags = DB_VM;
+    /* dbflags = DB_VM; */
 	boot();
 
 	menu(arguments);
