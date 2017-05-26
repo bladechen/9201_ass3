@@ -147,6 +147,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         bool retval = store_entry( vaddr, (pid_t) newas, newframe, as_region_control(region) );
         if( !retval )
         {
+            free_upages(newframe);
 
             as_destroy_region(newas, region);
             DEBUG(DB_VM, "i dont have enough pages\n");
