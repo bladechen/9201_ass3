@@ -385,6 +385,7 @@ file      vfs/devnull.c
 file      syscall/filetable.c
 file      syscall/loadelf.c
 file      syscall/openfile.c
+file      syscall/vm_syscalls.c
 file      syscall/runprogram.c
 file      syscall/file_syscalls.c
 file      syscall/proc_syscalls.c

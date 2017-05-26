@@ -146,6 +146,9 @@ int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 
+int as_define_heap(struct addrspace* as);
+int as_get_heap_break(struct addrspace* as, intptr_t amount);
+
 // Additions
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del);
 /*

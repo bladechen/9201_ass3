@@ -59,12 +59,7 @@ void vm_bootstrap(void)
 
 }
 
-inline static vaddr_t upper_addr(vaddr_t addr, int pages)
-{
-    KASSERT(pages >= 1);
-    return (addr + (pages << 12));
 
-}
 static struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress)
 {
     KASSERT(space != NULL);

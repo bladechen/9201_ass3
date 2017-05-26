@@ -41,7 +41,7 @@
 #include <elf.h>
 #include <list.h>
 
-#define APPLICATION_STACK_SIZE 18*PAGE_SIZE
+#define APPLICATION_STACK_SIZE (18*(PAGE_SIZE))
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -335,12 +335,57 @@ static void loop_through_region(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
-       // when we get here there should be only one node left in the list
-    // So free that node and then free the as struct
 
     as->is_loading = 0;
 
+
+
     as_deactivate();
+    // let us define heap here, because all the segments have been loaded.
+    return as_define_heap(as);
+}
+
+int as_define_heap(struct addrspace* as)
+{
+    KASSERT(as != NULL);
+    vaddr_t suppose_heap_start = 0x50000000;
+    /* vaddr_t suppose_heap_end = 0x60000000; */
+    /* size_t page_num = 65536; */
+
+
+    struct list_head *current = NULL;
+    struct list_head *tmp_head = NULL;
+
+    list_for_each_safe(current, tmp_head, &(as->list->head))
+    {
+        struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
+        DEBUG(DB_VM, " region : 0x%x, page: %d\n", tmp->region_vaddr, tmp->npages);
+        // never corrupt with stack.
+        if (tmp->type == STACK)
+        {
+            continue;
+        }
+        else if(upper_addr(tmp->region_vaddr, tmp->npages) >= suppose_heap_start )
+        {
+            suppose_heap_start = upper_addr(tmp->region_vaddr, tmp->npages);
+        }
+    }
+    int ret = as_define_region(as, suppose_heap_start, 0, 0, PF_R, PF_W, 0);
+    if ( ret != 0 )
+    {
+        return ret;
+    }
+    //kprintf("fuck stack");
+    struct list_head *temp = NULL;
+    struct as_region_metadata *last_region = NULL;
+    list_for_each_prev(temp, &(as->list->head))
+    {
+        last_region = list_entry(temp, struct as_region_metadata, link);
+        last_region->type = HEAP;
+        break;
+    }
+
+    loop_through_region(as);
     return 0;
 }
 
@@ -421,6 +466,64 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
     /* kfree(to_del); */
 }
 
+int as_get_heap_break(struct addrspace* as, intptr_t amount)
+{
+    KASSERT(amount >= 0 && (amount & PAGE_FRAME) == 0);
+    KASSERT(as != NULL);
+    struct list_head *current = NULL;
+    struct list_head *tmp_head = NULL;
+    struct as_region_metadata* tmp = NULL;
+
+    list_for_each_safe(current, tmp_head, &(as->list->head))
+    {
+        tmp = list_entry(current, struct as_region_metadata, link);
+        if (tmp->type == HEAP)
+        {
+            break;
+        }
+    }
+
+    KASSERT(tmp != NULL);
+    if (amount == 0)
+    {
+        return (tmp->region_vaddr + (tmp->npages << 12));
+    }
+    else
+    {
+        int inc_pages = amount >> 12;
+        int heap_break = (tmp->region_vaddr + (tmp->npages << 12));
+
+        for (int i=0;i<inc_pages;i++)
+        {
+            vaddr_t vaddr =  heap_break + i*PAGE_SIZE;
+            // get a free frame
+            paddr_t newframe = get_free_frame();
+            //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
+            if ( newframe == 0 )
+            {
+                DEBUG(DB_VM, "i have no enough frame\n");
+                goto alloc_heap_fail;
+            }
+
+            /* memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE); */
+            // Store new entry in the Page table
+            // no matter writable or not, set dirty bit to 0
+            bool retval = store_entry( vaddr, (pid_t)as, newframe, (as_region_control(tmp) &(~DIRTYMASK) ));
+            if( !retval )
+            {
+                DEBUG(DB_VM, "i dont have enough pages\n");
+                goto alloc_heap_fail;
+            }
+        }
+
+        tmp->npages += (amount>>12);
+        return heap_break;
+alloc_heap_fail:
+        //TODO deallocte the frame, page table
+        return -1;
+    }
+
+}
 char as_region_control(struct as_region_metadata* region)
 {
     KASSERT(region != NULL);

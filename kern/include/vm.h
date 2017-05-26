@@ -39,6 +39,7 @@
 #include <machine/vm.h>
 #include <types.h>
 #include <pagetable.h>
+#include <lib.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -77,6 +78,13 @@ enum  E_PAGETABLE_ENTRY_STATUS
     PAGETABLE_ENTRY_INRAM = 1,
     PAGETABLE_ENTRY_INSWAP = 2,
 };
+
+inline static vaddr_t upper_addr(vaddr_t addr, int pages)
+{
+    KASSERT(pages >= 1);
+    return (addr + (pages << 12));
+
+}
 
 static inline paddr_t pageentry_paddr(struct hpt_entry* entry)
 {

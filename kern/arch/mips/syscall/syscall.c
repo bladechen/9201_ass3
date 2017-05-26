@@ -260,6 +260,9 @@ syscall(struct trapframe *tf)
 			err = sys_ftruncate(tf->tf_a0, len);
 		}
 		break;
+        case SYS_sbrk:
+        err = sys_sbrk(tf->tf_a0, &retval);
+        break;
 
 
 

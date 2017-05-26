@@ -92,4 +92,6 @@ int sys_fstat(int fd, userptr_t statptr);
 int sys_fsync(int fd);
 int sys_ftruncate(int fd, off_t len);
 
+int sys_sbrk(intptr_t  amount, int* retval);
+
 #endif /* _SYSCALL_H_ */
