@@ -1,1 +1,29 @@
-Place your design document here.
+
+Assignment 3 has mainly 4 parts to it
+
+    . Page table which was a hashed page table (HPT)
+    . Frame table complete with frames management to be able to recycle freed frames
+    . Address space management, reading elf files and storing corresponding region information in address spaces
+    . Finally vm_fault handling the tlb exception scenarios
+
+To make this simpler we divided the task of frame table and page table management so that we could
+work independently until we had the frame work developed.
+
+We defined a general interface between the pagetable and the frametable and continued developing our
+code from there.
+
+Page table tasks were:
+1) initialise hashed page table - void init_page_table( void );
+    - Allocate memory for the page table using ramstealmem, as this could take up a lot of frames potentially (as we are allocating 2*max frames in memory)
+2) store an entry into the page table - bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
+3) remove an entry from the page table - int remove_page_entry( vaddr_t vaddr, pid_t pid );
+4) check for page status -
+    is it valid                 - bool is_valid( vaddr_t vaddr , pid_t pid );
+    is it a global entry        - bool is_global( vaddr_t vaddr , pid_t pid );
+    is the dirty bit set        - bool is_dirty( vaddr_t vaddr , pid_t pid );
+    is the entry non cacheable  - bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
+5) get the page table entry and populate the tlb fields - int get_tlb_entry(  vaddr_t vaddr , pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_lo );
+
+Frame table
+1) Initilise frame table - 
+
