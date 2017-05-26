@@ -12,7 +12,7 @@ work independently until we had the frame work developed.
 We defined a general interface between the pagetable and the frametable and continued developing our
 code from there.
 
-Page table tasks were:
+pagetable.h - Page table stuff
 1) initialise hashed page table - void init_page_table( void );
     - Allocate memory for the page table using ramstealmem, as this could take up a lot of frames potentially (as we are allocating 2*max frames in memory)
 2) store an entry into the page table - bool store_entry( vaddr_t vaddr , pid_t pid , paddr_t paddr , char control );
@@ -24,6 +24,120 @@ Page table tasks were:
     is the entry non cacheable  - bool is_non_cacheable( vaddr_t vaddr , pid_t pid );
 5) get the page table entry and populate the tlb fields - int get_tlb_entry(  vaddr_t vaddr , pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_lo );
 
-Frame table
-1) Initilise frame table - 
+vm.h - Frame table stuff
+1) Initilise frame table - void init_frametable();
+    - allocate memory for the frame table
+    NOTE: Allocationg of frame table is done after allocation of page table
+2) Obtain a free frame (for the application) in physical memory - paddr_t get_free_frame(void);
+    . Gets a free frame marked (USER_FRAME) currently unused
+    . If mem is full it returns 0;
+3) Obatain a free frame (for the kernel) in physical memory - vaddr_t alloc_kpages(unsigned npages);
+    . Gets a free frame marked (KERNEL_FRAME)
+    . If mem is full it returns 0;
+3) Free an already used user page - void free_upages(paddr_t addr);
+    . This is for freeing frames allocated for user applications
+    . The frame marked USER_FRAME is cleared and fed back into the free pool
+4) Free an already used page allocated by the kernal - void free_upages(paddr_t addr);
+    . This frees frames allocated by the kernel
+    . The frame marked KERNEL_FRAME is cleared and fed back into the free pool
 
+addrspace.h - Address space related stuff
+1) as_create
+    . Creates and returns a new as
+2) as_activate
+    . Flushes tlb (to remove old process entries)
+3) as_deactivate
+    . Same as activate
+4) as_destroy
+    . Loops throught the different regions and frees every frame in the region
+    . additionally destroys the address space data structure as well
+5) as_define_region
+    . Obtains free frames for each page in a region for all the regions and makes the page table
+    entry for each one of them.
+6) as_prepare_load
+    . Sets a bit called is_loading in the address space structure so that the read/write flags are
+    ignored while loading
+7) as_complete_load
+    . Resets the is_loading bit in the address space structure so that no fault occurs
+8) as_define_stack
+    . Defines a region for the stack, always starting from USER_STACK and extending down (currently
+    18 Pages)
+
+The tasks were divided into pagetable + address spave and frametable + vm_fault
+Page table entry
+    . We used a CRC32 to generate a hash index using the address space pointer and the vaddr. We
+    found we got a reasonable collision avoidence using this proven algorithm.
+    . The hashed page table was 2*size of total number of frames in physical memory
+    . The pagetable entry data structure was as follows
+        note we used external chaining as our collision resolution mechnism, the insertion was also
+        O(1) time complexity
+
+        struct hpt_entry
+        {
+            // Physical frame number with the 12 bit offset
+            paddr_t paddr;
+
+            // virtual page number with the 12 bit offset
+            vaddr_t vaddr;
+
+            // This is the process ID which can be the address space pointer
+            pid_t pid;
+
+            // bits 0 - GLOBAL
+            // bits 1 - VALID
+            // bits 2 - DIRTY
+            // bits 3 - NCACHE
+            // bits 4 - READ/WRITE for advanced
+
+            char control;
+
+            // Next pointer for the entries
+            struct hpt_entry *next;
+        };
+
+Hashed page table
+    . Consists of an array of entries, the loading of the table and a lock for the concurrency
+    avoidence
+    . The data structure was as follows
+        struct hashed_page_table
+        {
+        // Array of PTEs, this should have 2 times the max number of frames in physical memory
+        // Or simply use a pointer to hpt_entry such that we can dynamically allocate it
+        struct hpt_entry *hpt_entry;
+        //struct hpt_entry hpt[NUMBEROFFRAMES]; // Just a representation for now
+        #ifdef DEBUGLOAD
+        // This int holds the number of populated entries in the HPT
+        int load;
+        #endif
+        // Spinlock chosen for less overhead compared to struct lock
+        // Necessary for concurrency management between processes or even threads in the same process
+        struct spinlock *hpt_lock;
+        };
+Address space
+    . the address space data structure contains 2 variables only
+        - char is_loading
+        - struct list *list;
+            . this is the intrusive list implementation taken from the linux kernel for a generic
+            linked list used as a head to the region pointers
+    . the address space regions
+        - the data structure is as follows
+            . type determines if its a CODE, DATA, STACK or HEAP section
+            . the link is the link for the intrusive list
+                struct as_region_metadata {
+                    vaddr_t region_vaddr;
+                    size_t npages;
+
+                    // bit 0 is X  PF_X
+                    // bit 1 is W  PF_W
+                    // bit 2 is R  PF_R
+                    char rwxflag;
+
+                    enum region_type type;
+                    // Advanced part for demand loading
+                    struct vnode *region_vnode;
+
+                    // Link to the next data struct
+                    struct list_head link;
+                };
+
+Vm_fault
