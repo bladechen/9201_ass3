@@ -524,36 +524,16 @@ int as_get_heap_break(struct addrspace* as, intptr_t amount)
     {
         int inc_pages = amount >> 12;
         int heap_break = (tmp->region_vaddr + (tmp->npages << 12));
-
-        for (int i=0;i<inc_pages;i++)
+        int ret = build_pagetable_link((pid_t)as, heap_break, inc_pages, PF_W);
+        if (ret != 0)
         {
-            vaddr_t vaddr =  heap_break + i*PAGE_SIZE;
-            // get a free frame
-            paddr_t newframe = get_free_frame();
-            //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe);
-            if ( newframe == 0 )
-            {
-                DEBUG(DB_VM, "i have no enough frame\n");
-                goto alloc_heap_fail;
-            }
-
-            /* memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE); */
-            // Store new entry in the Page table
-            // no matter writable or not, set dirty bit to 0
-            bool retval = store_entry( vaddr, (pid_t)as, newframe, (as_region_control(tmp) &(~DIRTYMASK) ));
-            if( !retval )
-            {
-                free_upages(newframe);
-                DEBUG(DB_VM, "i dont have enough pages\n");
-                goto alloc_heap_fail;
-            }
+            goto alloc_heap_fail;
         }
 
         tmp->npages += (amount>>12);
         return heap_break;
 alloc_heap_fail:
         as_destroy_part_of_region(as, tmp, heap_break, inc_pages);
-        //TODO deallocte the frame, page table
         return -1;
     }
 
