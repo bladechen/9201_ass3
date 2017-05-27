@@ -52,6 +52,7 @@ enum region_type {
     DATA,
     STACK,
     HEAP,
+    MMAP,
     OTHER
 };
 
@@ -67,6 +68,8 @@ struct as_region_metadata {
     enum region_type type;
     // Advanced part for demand loading
     struct vnode *region_vnode;
+
+
 
     // Link to the next data struct
     struct list_head link;

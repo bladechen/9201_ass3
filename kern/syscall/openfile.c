@@ -131,6 +131,18 @@ openfile_incref(struct openfile *file)
  * Decrement the reference count on an openfile. Destroys it when the
  * reference count reaches zero.
  */
+
+struct vnode* get_vnode(struct  openfile *file)
+{
+    KASSERT(file != NULL);
+	spinlock_acquire(&file->of_reflock);
+    struct vnode* vn = file->of_vnode;
+    KASSERT(vn != NULL);
+    VOP_INCREF(vn);
+    spinlock_release(&file->of_reflock);
+    return vn;
+}
+
 void
 openfile_decref(struct openfile *file)
 {
@@ -147,3 +159,4 @@ openfile_decref(struct openfile *file)
 		spinlock_release(&file->of_reflock);
 	}
 }
+

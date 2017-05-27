@@ -498,6 +498,11 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
     /* kfree(to_del); */
 }
 
+int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int prot, void** addr)
+{
+    return 0;
+}
+
 int as_get_heap_break(struct addrspace* as, intptr_t amount)
 {
     KASSERT(amount >= 0 && (amount & (~PAGE_FRAME)) == 0);
@@ -589,3 +594,4 @@ static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int 
     }
     return 0;
 }
+

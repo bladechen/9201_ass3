@@ -32,35 +32,49 @@ int sys_sbrk(intptr_t  amount, int* retval)
     return 0;
 
 }
-/* int mmap(size_t length, int prot, int fd, off_t offset, int * retval) */
-/* { */
-/*     struct openfile *file = NULL; */
-/*  */
-/*     struct stat kbuf; */
-/* 	int err; */
-/*  */
-/* 	err = filetable_get(curproc->p_filetable, fd, &file); */
-/* 	if (err) { */
-/* 		return err; */
-/* 	} */
-/*  */
-/* 	#<{(| */
-/* 	 * No need to lock the openfile - it cannot disappear under us, */
-/* 	 * and we're not using any of its non-constant fields. */
-/* 	 |)}># */
-/*  */
-/* 	err = VOP_STAT(file->of_vnode, &kbuf); */
-/* 	if (err) { */
-/* 		filetable_put(curproc->p_filetable, fd, file); */
-/* 		return err; */
-/* 	} */
-/* 	filetable_put(curproc->p_filetable, fd, file); */
-/*     if (offset < 0 || offset >= kbuf.st_size || off) */
-/*  */
-/*     return 0; */
-/* } */
-/* int munmap(void* addr) */
-/* { */
-/*     return 0; */
-/* } */
-/*  */
+int mmap(size_t length, int prot, int fd, off_t offset, int * retval)
+{
+    struct openfile *file = NULL;
+
+    struct stat kbuf;
+	int err;
+
+	err = filetable_get(curproc->p_filetable, fd, &file);
+	if (err) {
+		return err;
+	}
+
+	/*
+	 * No need to lock the openfile - it cannot disappear under us,
+	 * and we're not using any of its non-constant fields.
+	 */
+
+	err = VOP_STAT(file->of_vnode, &kbuf);
+	if (err) {
+		filetable_put(curproc->p_filetable, fd, file);
+		return err;
+	}
+	filetable_put(curproc->p_filetable, fd, file);
+    if (!(offset >= 0 && offset < kbuf.st_size && offset + length >= 0 && offset + length < kbuf.st_size))
+    /* if (offset < 0 || offset >= kbuf.st_size || offset + length >=  kbuf.st_size) */
+    {
+        return EINVAL;
+    }
+    if ((offset & ~(PAGE_FRAME)) != 0 || (length & ~(PAGE_FRAME)) != 0)
+    {
+        return EINVAL;
+    }
+    openfile_incref(file);
+    struct vnode* vn = get_vnode(file);
+    KASSERT(vn != NULL);
+    struct addrspace *as = proc_getas();
+    void * addr = NULL;
+    return as_define_mmap();
+
+}
+
+int munmap(void* addr)
+{
+    return 0;
+}
+

@@ -93,5 +93,7 @@ int sys_fsync(int fd);
 int sys_ftruncate(int fd, off_t len);
 
 int sys_sbrk(intptr_t  amount, int* retval);
+int mmap(size_t length, int prot, int fd, off_t offset, int * retval);
+int munmap(void* addr);
 
 #endif /* _SYSCALL_H_ */
