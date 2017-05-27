@@ -66,10 +66,12 @@ struct as_region_metadata {
     char rwxflag;
 
     enum region_type type;
+
     // Advanced part for demand loading
     struct vnode *region_vnode;
 
-
+    // File offset of the vnode
+    off_t region_offset;
 
     // Link to the next data struct
     struct list_head link;
@@ -141,7 +143,8 @@ void              as_deactivate(void);
 void              as_destroy(struct addrspace *);
 
 int               as_define_region(struct addrspace *as,
-                                   vaddr_t vaddr, size_t memsz, size_t filesz,
+                                   vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset,
+                                   size_t memsz, size_t filesz,
                                    int readable,
                                    int writeable,
                                    int executable);
