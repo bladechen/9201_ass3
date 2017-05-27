@@ -67,13 +67,13 @@ struct as_region_metadata {
     enum region_type type;
 
     // Advanced part for demand loading
-    struct vnode *region_vnode;
+    struct vnode *vn;
 
     // File offset of the vnode
-    off_t region_offset;
+    off_t vnode_offset;
 
     // region size
-    size_t region_size;
+    size_t vnode_size;
 
     // Link to the next data struct
     struct list_head link;
