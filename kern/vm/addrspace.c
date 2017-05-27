@@ -67,13 +67,14 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
     new->region_offset = old->region_offset;
     // The new link is created in the as_add_region_to_list function
 }
-static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset, size_t memsize, char perm)
+static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset, size_t memsize, size_t region_size, char perm)
 {
     region->region_vaddr = vaddr;
     region->npages = convert_to_pages(memsize);
     region->rwxflag = perm;
     region->region_vnode = file_vnode;
     region->region_offset = region_offset;
+    region->region_size = region_size;
 
     if ( (perm & PF_R) != 0 && (perm & PF_W) != 0 && (perm & PF_X) == 0 )
     {
@@ -286,7 +287,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, 
 	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
 	vaddr &= PAGE_FRAME;
 
-    as_set_region(temp, vaddr, file_vnode, region_offset, memsize,
+    as_set_region(temp, vaddr, file_vnode, region_offset, memsize, filesize,
                   readable | writeable | executable
                  );
     as_add_region_to_list(as,temp);
