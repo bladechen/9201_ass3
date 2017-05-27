@@ -47,6 +47,10 @@ struct vnode;
  *
  * You write this.
  */
+#define HEAP_VADDR_BEGIN 0x50000000
+#define MMAP_VADDR_BEGIN 0x60000000
+#define HEAP_VADDR_END (MMAP_VADDR_BEGIN - 1)
+#define MMAP_VADDR_END (0x6fffffff)
 enum region_type {
     CODE,
     DATA,
@@ -95,6 +99,8 @@ struct addrspace {
     // struct as_region_metadata *list;
     struct list *list;
     char is_loading;
+
+    vaddr_t mmap_start;
 #endif
 };
 
@@ -155,6 +161,8 @@ int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 
+int as_destroy_mmap(void* addr);
+int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int writable, int readable, void** addr);
 int as_define_heap(struct addrspace* as);
 int as_get_heap_break(struct addrspace* as, intptr_t amount);
 
@@ -169,5 +177,26 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del);
 
 char as_region_control(struct as_region_metadata* region);
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
+
+
+
+static inline struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress)
+{
+    KASSERT(space != NULL);
+    KASSERT(space->list != NULL);
+    KASSERT(!(faultaddress & OFFSETMASK));
+    struct as_region_metadata* cur = NULL;
+    struct list_head* head = &(space->list->head);
+    list_for_each_entry(cur, head, link)
+    {
+        if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress)
+        {
+            return cur;
+        }
+    }
+    return NULL;
+
+}
+
 
 #endif /* _ADDRSPACE_H_ */

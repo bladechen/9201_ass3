@@ -60,23 +60,23 @@ void vm_bootstrap(void)
 }
 
 
-static struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress)
-{
-    KASSERT(space != NULL);
-    KASSERT(space->list != NULL);
-    KASSERT(!(faultaddress & OFFSETMASK));
-    struct as_region_metadata* cur = NULL;
-    struct list_head* head = &(space->list->head);
-    list_for_each_entry(cur, head, link)
-    {
-        if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress)
-        {
-            return cur;
-        }
-    }
-    return NULL;
-
-}
+/* static struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress) */
+/* { */
+/*     KASSERT(space != NULL); */
+/*     KASSERT(space->list != NULL); */
+/*     KASSERT(!(faultaddress & OFFSETMASK)); */
+/*     struct as_region_metadata* cur = NULL; */
+/*     struct list_head* head = &(space->list->head); */
+/*     list_for_each_entry(cur, head, link) */
+/*     { */
+/*         if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress) */
+/*         { */
+/*             return cur; */
+/*         } */
+/*     } */
+/*     return NULL; */
+/*  */
+/* } */
 
 int vm_fault(int faulttype, vaddr_t faultaddress)
 {

@@ -118,6 +118,7 @@ as_create(void)
     }
     as->list = kmalloc(sizeof(struct list));
     INIT_LIST_HEAD(&(as->list->head));
+    as->mmap_start = MMAP_VADDR_BEGIN;
     return as;
 }
 
@@ -146,7 +147,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         if( !retval )
         {
             free_upages(paddr);
-            as_destroy_region(newas, region);
+            /* as_destroy_region(newas, region); */
             DEBUG(DB_VM, "i dont have enough pages\n");
             // TODO if this fails then something has to be done
             return -1;
@@ -217,7 +218,8 @@ as_destroy(struct addrspace *as)
     list_for_each_safe(current, tmp_head, &(as->list->head))
     {
         struct as_region_metadata* tmp = list_entry(current, struct as_region_metadata, link);
-        list_del(current);
+        /* list_del(current); */
+        as_flush_region(as, tmp);
         as_destroy_region(as, tmp);
         kfree(tmp);
     }
@@ -345,7 +347,7 @@ as_complete_load(struct addrspace *as)
 int as_define_heap(struct addrspace* as)
 {
     KASSERT(as != NULL);
-    vaddr_t suppose_heap_start = 0x50000000;
+    vaddr_t suppose_heap_start = HEAP_VADDR_BEGIN;
     /* vaddr_t suppose_heap_end = 0x60000000; */
     /* size_t page_num = 65536; */
 
@@ -400,7 +402,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     //   (this must be > 64K so argument blocks of size ARG_MAX will fit) */
     int retval = as_define_region(as, *stackptr - APPLICATION_STACK_SIZE,
             NULL, 0,
-            APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, 
+            APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE,
             PF_R, PF_W, 0);
 
     if ( retval != 0 )
@@ -469,11 +471,94 @@ static void as_destroy_part_of_region(struct addrspace *as, struct as_region_met
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
     KASSERT(as != NULL && to_del != NULL);
+    list_del(&(to_del->link));
     as_destroy_part_of_region(as, to_del, to_del->region_vaddr, to_del->npages);
 }
-
-int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int prot, void** addr)
+static void as_flush_region(struct addrspace *as, struct as_region_metadata* region)
 {
+    KASSERT(region != NULL && as != NULL);
+    if ((region->rwxflag & PF_W) && (region->region_vnode != NULL) && region->type == MMAP)
+    {
+        uint32_t tlb_hi, tlb_lo ;
+        for (int i=0; i<region->npages;i++)
+        {
+            vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
+            int result = get_tlb_entry(vaddr, (pid_t)as, &tlb_hi, &tlb_lo);
+            if ( result != 0)
+            {
+                continue;
+            }
+            paddr_t paddr = tlb_lo & ENTRYMASK;
+
+			void* kbuf = (void*)PADDR_TO_KVADDR(paddr);
+
+            /* Only lock the seek position if we're really using it. */
+            off_t file_pos = region->region_offset + i*PAGE_SIZE;
+
+			struct iovec iov;
+			struct uio kuio;
+			/* set up a uio with the buffer, its size, and the current offset */
+            uio_kinit(&iov, &kuio, kbuf, PAGE_FRAME, file_pos, UIO_WRITE);
+
+			int ret = VOP_WRITE(region->region_vnode, &kuio);
+            if (ret != 0)
+            {
+                kprintf("what happen with VOP_WRITE in flush region: %d\n", ret);
+                return ;
+
+            }
+
+        }
+
+    }
+    return;
+}
+
+int as_destroy_mmap(void* addr)
+{
+    struct addrspace* as = proc_getas();
+    KASSERT(as != NULL);
+    struct as_region_metadata *region = get_region(as, (vaddr_t)addr);
+    if (region == NULL)
+    {
+        return EINVAL;
+    }
+    as_flush_region(as, region);
+    as_destroy_region(as, region);
+    kfree(region);
+    return 0;
+
+}
+
+int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int writable, int readable, void** addr)
+{
+    KASSERT(as != NULL);
+    KASSERT(vn != NULL);
+    KASSERT((as->mmap_start & (~PAGE_FRAME)) == 0);
+    *addr = NULL;
+    /* as->mmap_start += (npages << 12); */
+/* as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset, */
+/*         size_t memsize, size_t filesize, */
+/*         int readable, int writeable, int executable) */
+
+    int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12, readable ? PF_R:0,
+                     writeable?PR_W:0, 0);
+    if (ret != 0)
+    {
+        return ret;
+    }
+    struct list_head *temp = NULL;
+    struct as_region_metadata *last_region = NULL;
+    list_for_each_prev(temp, &(as->list->head))
+    {
+        last_region = list_entry(temp, struct as_region_metadata, link);
+        last_region->type = MMAP;
+        break;
+    }
+
+
+    *addr = as->mmap_start;
+    as->mmap_start += npages << 12;
     return 0;
 }
 
