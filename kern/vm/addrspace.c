@@ -63,13 +63,17 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
     new->npages = old->npages;
     new->rwxflag = old->rwxflag;
     new->type = old->type;
+    new->region_vnode = old->region_vnode;
+    new->region_offset = old->region_offset;
     // The new link is created in the as_add_region_to_list function
 }
-static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, size_t memsize, char perm)
+static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset, size_t memsize, char perm)
 {
     region->region_vaddr = vaddr;
     region->npages = convert_to_pages(memsize);
     region->rwxflag = perm;
+    region->region_vnode = file_vnode;
+    region->region_offset = region_offset;
 
     if ( (perm & PF_R) != 0 && (perm & PF_W) != 0 && (perm & PF_X) == 0 )
     {
@@ -134,17 +138,7 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
         }
         paddr_t paddr = tlb_lo & ENTRYMASK;
         inc_frame_ref(paddr);
-        // get a free frame
-        /* paddr_t newframe = get_free_frame(); */
-        /* //DEBUG(DB_VM, " Free Frame is : 0x%x\n", newframe); */
-        /* if ( newframe == 0 ) */
-        /* { */
-        /*     DEBUG(DB_VM, "i have no enough frame\n"); */
-        /*     as_destroy_region(newas, region); */
-        /*     return -1; */
-        /* } */
-        /*  */
-        /* memcpy((void *)PADDR_TO_KVADDR(newframe), (void *)PADDR_TO_KVADDR(tlb_lo) , PAGE_SIZE); */
+
         // Store new entry in the Page table
         // no matter writable or not, set dirty bit to 0
         bool retval = store_entry( vaddr, (pid_t) newas, paddr, (as_region_control(region) &(~DIRTYMASK) ));
@@ -275,8 +269,9 @@ as_deactivate(void)
  * want to implement them.
  */
 int
-as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t filesize,
-                 int readable, int writeable, int executable)
+as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset,
+        size_t memsize, size_t filesize,
+        int readable, int writeable, int executable)
 {
     /*
      * Write this.
@@ -291,7 +286,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize, size_t fil
 	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
 	vaddr &= PAGE_FRAME;
 
-    as_set_region(temp, vaddr, memsize,
+    as_set_region(temp, vaddr, file_vnode, region_offset, memsize,
                   readable | writeable | executable
                  );
     as_add_region_to_list(as,temp);
@@ -371,7 +366,7 @@ int as_define_heap(struct addrspace* as)
             suppose_heap_start = upper_addr(tmp->region_vaddr, tmp->npages);
         }
     }
-    int ret = as_define_region(as, suppose_heap_start, 0, 0, PF_R, PF_W, 0);
+    int ret = as_define_region(as, suppose_heap_start, NULL, 0, 0, 0, PF_R, PF_W, 0);
     if ( ret != 0 )
     {
         return ret;
@@ -402,7 +397,10 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 
     // Define the stack as a region with 16K size allocated for it
     //   (this must be > 64K so argument blocks of size ARG_MAX will fit) */
-    int retval = as_define_region(as, *stackptr - APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, PF_R, PF_W, 0);
+    int retval = as_define_region(as, *stackptr - APPLICATION_STACK_SIZE,
+            NULL, 0,
+            APPLICATION_STACK_SIZE, APPLICATION_STACK_SIZE, 
+            PF_R, PF_W, 0);
 
     if ( retval != 0 )
     {
@@ -470,32 +468,7 @@ static void as_destroy_part_of_region(struct addrspace *as, struct as_region_met
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
     KASSERT(as != NULL && to_del != NULL);
-    uint32_t tlb_hi, tlb_lo;
-    size_t i = 0;
-    for (i=0;i< to_del->npages; i++)
-    {
-        vaddr_t vaddr_del = to_del->region_vaddr + i*PAGE_SIZE;
-        // free page table entry
-        int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
-        if ( res != 0 )
-        {
-            // FIXME, maybe the stack area? the program is not running yet because of running out of memory?
-            // TODO we should handle the error case, there is no valid entry in tlb?
-            /* panic("As_destroy_region has no valid page table entry??"); */
-            continue;
-            //return;
-
-        }
-        tlb_lo = tlb_lo & ENTRYMASK;
-        // free the frame
-        free_upages(tlb_lo);
-        // Delete PTE related to this
-        // TODO the error case for this !!!
-        // i don't think we should handle this error, kassert it only.
-        KASSERT(0 == remove_page_entry(vaddr_del, (pid_t)as));
-    }
-    // currently nothing in as_region_metadata is kmalloced so just kfree the datastructure
-    /* kfree(to_del); */
+    as_destroy_part_of_region(as, to_del, to_del->region_vaddr, to_del->npages);
 }
 
 int as_get_heap_break(struct addrspace* as, intptr_t amount)
