@@ -72,6 +72,9 @@ struct as_region_metadata {
     // File offset of the vnode
     off_t region_offset;
 
+    // region size
+    size_t region_size;
+
     // Link to the next data struct
     struct list_head link;
 };
