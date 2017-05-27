@@ -40,6 +40,7 @@
 
 #include <elf.h>
 #include <list.h>
+#include <vnode.h>
 
 #define APPLICATION_STACK_SIZE (18*(PAGE_SIZE))
 /*
@@ -63,18 +64,19 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
     new->npages = old->npages;
     new->rwxflag = old->rwxflag;
     new->type = old->type;
-    new->region_vnode = old->region_vnode;
-    new->region_offset = old->region_offset;
+    new->vn = old->vn;
+    new->vnode_offset = old->vnode_offset;
+    new->vnode_size = old->vnode_size;
     // The new link is created in the as_add_region_to_list function
 }
-static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset, size_t memsize, size_t region_size, char perm)
+static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t vnode_offset, size_t memsize, size_t vnode_size, char perm)
 {
     region->region_vaddr = vaddr;
     region->npages = convert_to_pages(memsize);
     region->rwxflag = perm;
-    region->region_vnode = file_vnode;
-    region->region_offset = region_offset;
-    region->region_size = region_size;
+    region->vn = file_vnode;
+    region->vnode_offset = vnode_offset;
+    region->vnode_size = vnode_size;
 
     if ( (perm & PF_R) != 0 && (perm & PF_W) != 0 && (perm & PF_X) == 0 )
     {
@@ -188,6 +190,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         // transfer content of one region to another
         copy_region(old_region, new_region);
 
+        // TODO inc vnode ref
+        // TODO lock required?
+        
+        VOP_INCREF(new_region->vn);
+
         // Allocate a frame and copy data from old frame to new frame
         int result = alloc_and_copy_frame(newas, new_region, (pid_t) old);
 
@@ -272,7 +279,7 @@ as_deactivate(void)
  * want to implement them.
  */
 int
-as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, off_t region_offset,
+as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, off_t vnode_offset,
         size_t memsize, size_t filesize,
         int readable, int writeable, int executable)
 {
@@ -289,23 +296,23 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, 
 	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
 	vaddr &= PAGE_FRAME;
 
-    as_set_region(temp, vaddr, file_vnode, region_offset, memsize, filesize,
+    as_set_region(temp, vaddr, file_vnode, vnode_offset, memsize, filesize,
                   readable | writeable | executable
                  );
     as_add_region_to_list(as,temp);
 
     // Now make the Page table mapping for the filesize bytes only
-    size_t filepages = convert_to_pages(filesize);
+    //size_t filepages = convert_to_pages(filesize);
 
-    // Build page table link
-    int retval = build_pagetable_link((pid_t)as, vaddr, filepages, writeable);
+    //// Build page table link
+    //int retval = build_pagetable_link((pid_t)as, vaddr, filepages, writeable);
 
-    if ( retval != 0 )
-    {
-        // Destroy address space
-        as_destroy(as);
-        return ENOMEM;
-    }
+    //if ( retval != 0 )
+    //{
+    //    // Destroy address space
+    //    as_destroy(as);
+    //    return ENOMEM;
+    //}
     return 0;
 }
 
