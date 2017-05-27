@@ -34,6 +34,11 @@
 #include <spinlock.h>
 #include <current.h>
 #include <mips/tlb.h>
+#include <kern/iovec.h>
+#include <uio.h>
+#include <stat.h>
+
+
 #include <addrspace.h>
 #include <vm.h>
 #include <proc.h>
@@ -53,6 +58,7 @@
  *
  */
 
+static void as_flush_region(struct addrspace *as, struct as_region_metadata* region);
 static int convert_to_pages(size_t memsize);
 static struct as_region_metadata* as_create_region(void);
 static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int writeable);
@@ -192,7 +198,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
         // TODO inc vnode ref
         // TODO lock required?
-        
+
         VOP_INCREF(new_region->vn);
 
         // Allocate a frame and copy data from old frame to new frame
@@ -484,10 +490,10 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 static void as_flush_region(struct addrspace *as, struct as_region_metadata* region)
 {
     KASSERT(region != NULL && as != NULL);
-    if ((region->rwxflag & PF_W) && (region->region_vnode != NULL) && region->type == MMAP)
+    if ((region->rwxflag & PF_W) && (region->vn != NULL) && region->type == MMAP)
     {
         uint32_t tlb_hi, tlb_lo ;
-        for (int i=0; i<region->npages;i++)
+        for (int i=0; i<(int)region->npages;i++)
         {
             vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
             int result = get_tlb_entry(vaddr, (pid_t)as, &tlb_hi, &tlb_lo);
@@ -500,14 +506,14 @@ static void as_flush_region(struct addrspace *as, struct as_region_metadata* reg
 			void* kbuf = (void*)PADDR_TO_KVADDR(paddr);
 
             /* Only lock the seek position if we're really using it. */
-            off_t file_pos = region->region_offset + i*PAGE_SIZE;
+            off_t file_pos = region->vnode_offset+ i*PAGE_SIZE;
 
 			struct iovec iov;
 			struct uio kuio;
 			/* set up a uio with the buffer, its size, and the current offset */
             uio_kinit(&iov, &kuio, kbuf, PAGE_FRAME, file_pos, UIO_WRITE);
 
-			int ret = VOP_WRITE(region->region_vnode, &kuio);
+			int ret = VOP_WRITE(region->vn , &kuio);
             if (ret != 0)
             {
                 kprintf("what happen with VOP_WRITE in flush region: %d\n", ret);
@@ -549,7 +555,7 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
 /*         int readable, int writeable, int executable) */
 
     int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12, readable ? PF_R:0,
-                     writeable?PR_W:0, 0);
+                     writable?PF_W:0, 0);
     if (ret != 0)
     {
         return ret;
@@ -564,7 +570,7 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
     }
 
 
-    *addr = as->mmap_start;
+    *addr = (void*)as->mmap_start;
     as->mmap_start += npages << 12;
     return 0;
 }

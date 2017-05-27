@@ -268,7 +268,6 @@ syscall(struct trapframe *tf)
         case SYS_mmap:
         {
             uint64_t offset;
-            int fd;
             size_t length  = tf->tf_a0;
             int prot = tf->tf_a1;
             int fd = tf->tf_a2;
@@ -295,7 +294,7 @@ syscall(struct trapframe *tf)
             err = sys_mmap(length, prot, fd, offset, &retval);
             break;
         }
-        case sys_munmap:
+        case SYS_munmap:
         {
             err = sys_munmap((void*)tf->tf_a0);
             break;

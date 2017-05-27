@@ -1,5 +1,9 @@
 #include <types.h>
+#include <vnode.h>
+#include <stat.h>
 #include <kern/errno.h>
+#include <openfile.h>
+#include <filetable.h>
 
 #include <lib.h>
 #include <spl.h>
@@ -34,7 +38,7 @@ int sys_sbrk(intptr_t  amount, int* retval)
     return 0;
 
 }
-int mmap(size_t length, int prot, int fd, off_t offset, int * retval)
+int sys_mmap(size_t length, int prot, int fd, off_t offset, int * retval)
 {
     struct openfile *file = NULL;
 
@@ -83,7 +87,7 @@ int mmap(size_t length, int prot, int fd, off_t offset, int * retval)
 
 }
 
-int munmap(void* addr)
+int sys_munmap(void* addr)
 {
     if (addr == NULL)
     {

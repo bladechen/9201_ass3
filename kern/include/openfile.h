@@ -68,4 +68,7 @@ void openfile_incref(struct openfile *);
 void openfile_decref(struct openfile *);
 
 
+struct vnode* get_vnode(struct  openfile *file);
+
+
 #endif /* _OPENFILE_H_ */

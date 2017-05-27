@@ -34,6 +34,7 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <kern/fcntl.h>
+#include <vnode.h>
 #include <lib.h>
 #include <synch.h>
 #include <vfs.h>
