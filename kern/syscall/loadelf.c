@@ -289,12 +289,13 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 			return ENOEXEC;
 		}
 
-		result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
-				      ph.p_memsz, ph.p_filesz,
-				      ph.p_flags & PF_X);
-		if (result) {
-			return result;
-		}
+        (void)load_segment;
+		//result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
+		//		      ph.p_memsz, ph.p_filesz,
+		//		      ph.p_flags & PF_X);
+		//if (result) {
+		//	return result;
+		//}
 	}
 
 	result = as_complete_load(as);

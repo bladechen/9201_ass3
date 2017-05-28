@@ -166,6 +166,9 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
 int as_define_heap(struct addrspace* as);
 int as_get_heap_break(struct addrspace* as, intptr_t amount);
 
+// Function for dynamic loading of a page into memory
+int load_frame(struct as_region_metadata *, vaddr_t faultaddress);
+
 // Additions
 void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del);
 /*
