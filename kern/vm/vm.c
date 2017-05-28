@@ -161,14 +161,11 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     }
     else
     {
-        paddr_t frame_addr = get_free_frame();
-        if (frame_addr == 0)
+        ret = load_frame(region, faultaddress);
+        if (ret != 0)
         {
-            return ENOMEM;
+            return ret;
         }
-        char ctrl = as_region_control(region);
-
-        load_frame(region, faultaddress);
         // implement logic to check the region for demand loading
         //bool result = store_entry (faultaddress, pid, frame_addr, ctrl);
         //if (!result)
@@ -176,19 +173,18 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         //    free_upages(frame_addr);
         //    return ENOMEM;
         //}
-        //ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
-        //if (ret != 0)
-        //{
-        //    panic("what happen in get_tlb_entry");
-        //}
+        ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+        if (ret != 0)
+        {
+           panic("what happen in get_tlb_entry");
+        }
         //KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
         /* KASSERT(as->is_loading == 0); */
 
-        (void) ctrl;
         // I dont think we need this part TODO
-        int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
+        /* int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0; */
 
-        tlb_lo |= write_permission;
+        /* tlb_lo |= write_permission; */
         tlb_force_write(tlb_hi, tlb_lo);
 
     }

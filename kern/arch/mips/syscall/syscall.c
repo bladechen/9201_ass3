@@ -289,6 +289,7 @@ syscall(struct trapframe *tf)
             }
 
             join32to64(lo, hi, &offset);
+            kprintf("mmap, length: %d, prot: %d, fd: %d, offset: %lld\n", length, prot, fd, offset);
 
 
             err = sys_mmap(length, prot, fd, offset, &retval);

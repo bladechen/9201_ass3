@@ -74,6 +74,9 @@ static void copy_region(struct as_region_metadata *old, struct as_region_metadat
     new->vn = old->vn;
     new->vnode_offset = old->vnode_offset;
     new->vnode_size = old->vnode_size;
+
+    if (new->vn != NULL)
+        VOP_INCREF(new->vn);
     // The new link is created in the as_add_region_to_list function
 }
 static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, struct vnode *file_vnode, off_t vnode_offset, size_t memsize, size_t vnode_size, char perm)
@@ -84,6 +87,11 @@ static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, stru
     region->vn = file_vnode;
     region->vnode_offset = vnode_offset;
     region->vnode_size = vnode_size;
+    if (file_vnode != NULL)
+    {
+        VOP_INCREF(file_vnode);
+
+    }
 
     if ( (perm & PF_R) != 0 && (perm & PF_W) != 0 && (perm & PF_X) == 0 )
     {
@@ -191,7 +199,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         // TODO lock required?
 
         // inc vnode ref
-        VOP_INCREF(new_region->vn);
 
         // Allocate a frame and copy data from old frame to new frame
         int result = alloc_and_copy_frame(newas, new_region, (pid_t) old);
@@ -291,8 +298,10 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, 
         return ENOMEM;
     }
 	/* Align the region. First, the base... */
+    temp->vnode_vaddr = vaddr;
 	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
 	vaddr &= PAGE_FRAME;
+    /* kprintf("hhh %x %x\n", temp->vnode_vaddr, vaddr); */
 
     as_set_region(temp, vaddr, file_vnode, vnode_offset, memsize, filesize,
                   readable | writeable | executable
@@ -434,9 +443,14 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     return 0;
 }
 
+static int page_index(vaddr_t addr)
+{
+    return addr >> 12;
+}
 static int convert_to_pages(size_t memsize)
 {
     int pgsize = 0;
+    /* KASSERT(memsize > 0); */
     // If non zero memsize then divide by PAGE_SIZE and add 1
     if ( memsize != 0 )
         pgsize = 1 + ((memsize-1)>>12);
@@ -485,6 +499,10 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del)
 {
     KASSERT(as != NULL && to_del != NULL);
     list_del(&(to_del->link));
+    if (to_del->vn != NULL)
+    {
+        VOP_DECREF(to_del->vn);
+    }
     as_destroy_part_of_region(as, to_del, to_del->region_vaddr, to_del->npages);
 }
 static void as_flush_region(struct addrspace *as, struct as_region_metadata* region)
@@ -672,35 +690,79 @@ int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
     KASSERT(region!=NULL);
     size_t pages = region->npages;
     vaddr_t end_region = region->region_vaddr + pages*PAGE_SIZE;
-    size_t bytes_to_write;
+    size_t bytes_to_write = 0;
     bool to_write = true;
 
     struct addrspace *as = proc_getas();
 
     // get the end of actual size
-    size_t file_end_page = convert_to_pages(region->vnode_size);
+    size_t file_end_page = page_index(region->vnode_size);
 
     // if we are in this function then the region should be non-NULL and the
     // fault address should be within the bounds
-    KASSERT( (faultaddress >= region->region_vaddr) && (faultaddress <= end_region) );
+    KASSERT( (faultaddress >= region->region_vaddr) && (faultaddress < end_region) );
 
    // perform check to see if the frame is full of text or if the frame is to be partially populated
-    size_t faultaddress_page = convert_to_pages( faultaddress - region->region_vaddr );
+    size_t faultaddress_page = page_index( faultaddress - region->region_vaddr );
 
-    if ( faultaddress_page < file_end_page )
+	size_t start_file_off = region->vnode_offset;
+    size_t start_mem_off = 0;
+
+    if (region->vn != NULL && region->vnode_size > 0 )
     {
-        bytes_to_write = PAGE_SIZE;
-    }
-    else if ( faultaddress_page == file_end_page )
-    {
-        // partially write the page
-        bytes_to_write = region->vnode_size - (faultaddress_page - 1)*PAGE_SIZE;
+
+        size_t fault_addr = faultaddress_page << 12;
+        size_t zero_gap = region->vnode_vaddr - region->region_vaddr;
+        kprintf("%llu %d %d %d \n",region->vnode_offset,  zero_gap, faultaddress_page, fault_addr);
+
+        start_file_off += (faultaddress_page) * PAGE_SIZE;
+        if (fault_addr >= zero_gap && fault_addr - zero_gap >= region->vnode_size)
+        {
+            to_write = false;
+        }
+        else if (faultaddress_page == file_end_page && fault_addr != 0)
+        {
+            /* start_mem_off = faultaddress_page * PAGE_SIZE; */
+            /* bytes_to_write = PAGE_SIZE; */
+			bytes_to_write = region->vnode_size - (faultaddress_page)*PAGE_SIZE;
+            start_file_off -= ( zero_gap);
+        }
+        else if (faultaddress_page == file_end_page && fault_addr == 0)
+        {
+            bytes_to_write = region->vnode_size - (faultaddress_page)*PAGE_SIZE;
+            /* start_file_off -= ( zero_gap); */
+            start_mem_off = zero_gap;
+
+        }
+        else if (fault_addr == 0)
+        {
+            start_mem_off = zero_gap;
+            bytes_to_write = PAGE_SIZE - zero_gap;
+            /* start_file_off = ; */
+        }
+
+        else
+        {
+            /* start_mem_off = faultaddress_page * PAGE_SIZE; */
+            bytes_to_write = PAGE_SIZE;
+            start_file_off -= ( zero_gap);
+        }
+		/* if ( faultaddress_page < file_end_page ) */
+		/* { */
+		/* 	bytes_to_write = PAGE_SIZE; */
+		/* } */
+		/* else if ( faultaddress_page == file_end_page ) */
+		/* { */
+		/* 	// partially write the page */
+		/* 	bytes_to_write = region->vnode_size - (faultaddress_page)*PAGE_SIZE; */
+		/* } */
     }
     else
     {
         // return page as is nothing to write
         to_write = false;
     }
+    kprintf("write flag: %d, fault: 0x%x, file off: %x, size bytes: %d, mem off:%x \n",to_write, faultaddress, start_file_off, bytes_to_write, start_mem_off);
 
     // Free frame from mempool
     paddr_t paddr = get_free_frame();
@@ -710,8 +772,6 @@ int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
         return ENOMEM;
     }
 
-    // Align the page
-    faultaddress = faultaddress & PAGE_FRAME;
 
     bool result = store_entry ( faultaddress, (pid_t) as, paddr, as_region_control(region));
     if ( !result )
@@ -723,24 +783,15 @@ int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
     // only if something has to be written to the frame
     if ( to_write )
     {
-        // read from file using the vnode and offset
         struct iovec iov;
-        struct uio u;
+        struct uio kuio;
+        start_mem_off += paddr;
+        /* set up a uio with the buffer, its size, and the current offset */
+        uio_kinit(&iov, &kuio, (void*)PADDR_TO_KVADDR(start_mem_off), bytes_to_write, start_file_off, UIO_READ);
+        /* uio_kinit(&iov, &kuio, (void*)PADDR_TO_KVADDR(start_mem_off), bytes_to_write, start_file_off, UIO_READ); */
 
-        iov.iov_ubase = (userptr_t) PADDR_TO_KVADDR(paddr);
-        iov.iov_len = bytes_to_write;
 
-        u.uio_iov = &iov;
-        u.uio_iovcnt = 1;
-        u.uio_resid = bytes_to_write;
-        u.uio_offset = region->vnode_offset;
-        // TODO Check if this is the correct mode
-        u.uio_segflg = UIO_USERSPACE;
-        u.uio_rw = UIO_READ;
-        u.uio_space = as;
-
-        // TODO make sure this is not a stack or heap
-        int result = VOP_READ(region->vn, &u);
+        int result = VOP_READ(region->vn, &kuio);
         if (result)
         {
             free_upages(paddr);

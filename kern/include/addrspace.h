@@ -75,6 +75,7 @@ struct as_region_metadata {
     struct vnode *vn;
 
     // File offset of the vnode
+    vaddr_t vnode_vaddr;
     off_t vnode_offset;
 
     // region size
@@ -183,6 +184,7 @@ int load_elf(struct vnode *v, vaddr_t *entrypoint);
 
 
 
+static inline vaddr_t upper_addr(vaddr_t addr, int pages);
 static inline struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress)
 {
     KASSERT(space != NULL);
@@ -192,7 +194,7 @@ static inline struct as_region_metadata* get_region(struct addrspace* space, vad
     struct list_head* head = &(space->list->head);
     list_for_each_entry(cur, head, link)
     {
-        if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress)
+        if (cur->region_vaddr <= faultaddress && (vaddr_t)upper_addr(cur->region_vaddr, cur->npages) > faultaddress)
         {
             return cur;
         }

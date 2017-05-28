@@ -80,8 +80,12 @@ int sys_mmap(size_t length, int prot, int fd, off_t offset, int * retval)
     err = as_define_mmap(as, vn, offset, length >> 12,  PROT_READ & prot, PROT_WRITE & prot,  &addr);
     if (err != 0)
     {
+        VOP_DECREF(vn);
+        openfile_decref(file);
         return err;
     }
+    VOP_DECREF(vn);
+    openfile_decref(file);
     *retval = (int) addr;
     return 0;
 

@@ -82,7 +82,7 @@ enum  E_PAGETABLE_ENTRY_STATUS
     PAGETABLE_ENTRY_INSWAP = 2,
 };
 
-inline static vaddr_t upper_addr(vaddr_t addr, int pages)
+static inline vaddr_t upper_addr(vaddr_t addr, int pages)
 {
     KASSERT(pages >= 0);
     return (addr + (pages << 12));
