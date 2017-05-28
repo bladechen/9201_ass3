@@ -529,7 +529,7 @@ static void as_flush_region(struct addrspace *as, struct as_region_metadata* reg
 			struct iovec iov;
 			struct uio kuio;
 			/* set up a uio with the buffer, its size, and the current offset */
-            uio_kinit(&iov, &kuio, kbuf, PAGE_FRAME, file_pos, UIO_WRITE);
+            uio_kinit(&iov, &kuio, kbuf, PAGE_SIZE, file_pos, UIO_WRITE);
 
 			int ret = VOP_WRITE(region->vn , &kuio);
             if (ret != 0)
@@ -563,6 +563,8 @@ int as_destroy_mmap(void* addr)
 
 int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int writable, int readable, void** addr)
 {
+    (void)writable;
+    (void)readable;
     KASSERT(as != NULL);
     KASSERT(vn != NULL);
     KASSERT((as->mmap_start & (~PAGE_FRAME)) == 0);
@@ -572,8 +574,11 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
 /*         size_t memsize, size_t filesize, */
 /*         int readable, int writeable, int executable) */
 
-    int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12, readable ? PF_R:0,
-                     writable?PF_W:0, 0);
+    int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  PF_R,
+                     PF_W, 0);
+
+    /* int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12, readable ? PF_R:0, */
+    /*                  writable?PF_W:0, 0); */
     if (ret != 0)
     {
         return ret;
@@ -590,6 +595,7 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
 
     *addr = (void*)as->mmap_start;
     as->mmap_start += npages << 12;
+    kprintf("mmap addr: 0x%p\n", *addr);
     return 0;
 }
 

@@ -42,7 +42,7 @@ int sys_mmap(size_t length, int prot, int fd, off_t offset, int * retval)
 {
     struct openfile *file = NULL;
 
-    struct stat kbuf;
+    /* struct stat kbuf; */
 	int err;
 
 	err = filetable_get(curproc->p_filetable, fd, &file);
@@ -55,19 +55,19 @@ int sys_mmap(size_t length, int prot, int fd, off_t offset, int * retval)
 	 * and we're not using any of its non-constant fields.
 	 */
 
-    // FIXME, length can bigger than file size
-	err = VOP_STAT(file->of_vnode, &kbuf);
-	if (err) {
-		filetable_put(curproc->p_filetable, fd, file);
-		return err;
-	}
-	filetable_put(curproc->p_filetable, fd, file);
-    if (!(offset >= 0 && offset < kbuf.st_size && offset + length >= 0 && offset + length < kbuf.st_size))
-    /* if (offset < 0 || offset >= kbuf.st_size || offset + length >=  kbuf.st_size) */
-    {
-        DEBUG(DB_VM, "what size you passing!");
-        return EINVAL;
-    }
+    /* // FIXME, length can bigger than file size */
+	/* err = VOP_STAT(file->of_vnode, &kbuf); */
+	/* if (err) { */
+	/* 	filetable_put(curproc->p_filetable, fd, file); */
+	/* 	return err; */
+	/* } */
+	/* filetable_put(curproc->p_filetable, fd, file); */
+    /* if (!(offset >= 0 && offset < kbuf.st_size && offset + length >= 0 && offset + length < kbuf.st_size)) */
+    /* #<{(| if (offset < 0 || offset >= kbuf.st_size || offset + length >=  kbuf.st_size) |)}># */
+    /* { */
+    /*     DEBUG(DB_VM, "what size you passing!"); */
+    /*     return EINVAL; */
+    /* } */
     if ((offset & ~(PAGE_FRAME)) != 0 || (length & ~(PAGE_FRAME)) != 0)
     {
         return EINVAL;
