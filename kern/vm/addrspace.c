@@ -39,6 +39,7 @@
 #include <proc.h>
 
 #include <elf.h>
+#include <uio.h>
 #include <list.h>
 #include <vnode.h>
 
@@ -95,18 +96,8 @@ static void as_set_region(struct as_region_metadata *region, vaddr_t vaddr, stru
 }
 static void as_add_region_to_list(struct addrspace *as,struct as_region_metadata *temp)
 {
-    // Add region entry into the data structure
-    /* if (as->list == NULL) */
-    /* { */
-    /*     // If first region then init temp to point to itself */
-    /*     INIT_LIST_HEAD(&(temp->link)); */
-    /*     as->list = temp; */
-    /* } */
-    /* else */
-    {
-        // If not the first entry then add to the queue
-        list_add_tail( &(temp->link), &(as->list->head) );
-    }
+   // If not the first entry then add to the queue
+    list_add_tail( &(temp->link), &(as->list->head) );
 }
 
 struct addrspace *
@@ -189,9 +180,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         // transfer content of one region to another
         copy_region(old_region, new_region);
 
-        // TODO inc vnode ref
-        // TODO lock required?
-        
+        // inc vnode ref
         VOP_INCREF(new_region->vn);
 
         // Allocate a frame and copy data from old frame to new frame
@@ -299,17 +288,17 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, struct vnode *file_vnode, 
                  );
     as_add_region_to_list(as,temp);
 
-    // Now make the Page table mapping for the filesize bytes only
+    // now make the page table mapping for the filesize bytes only
     //size_t filepages = convert_to_pages(filesize);
 
-    //// Build page table link
+    //// build page table link
     //int retval = build_pagetable_link((pid_t)as, vaddr, filepages, writeable);
 
     //if ( retval != 0 )
     //{
-    //    // Destroy address space
+    //    // destroy address space
     //    as_destroy(as);
-    //    return ENOMEM;
+    //    return enomem;
     //}
     return 0;
 }
@@ -379,7 +368,10 @@ int as_define_heap(struct addrspace* as)
     {
         return ret;
     }
-    //kprintf("fuck stack");
+
+    // Heap needs to be inited with frames
+    // TODO 
+
     struct list_head *temp = NULL;
     struct as_region_metadata *last_region = NULL;
     list_for_each_prev(temp, &(as->list->head))
@@ -414,7 +406,12 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
     {
         return retval;
     }
-    //kprintf("fuck stack");
+
+
+    // Stack needs allocation of frames before here
+    // TODO
+    // and build pagetable entry
+
     struct list_head *temp = NULL;
     struct as_region_metadata *last_region = NULL;
     list_for_each_prev(temp, &(as->list->head))
@@ -566,6 +563,90 @@ static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, int 
             // PTE for this dosent exist
             free_upages(paddr);
             return ENOMEM;
+        }
+    }
+    return 0;
+}
+
+int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
+{
+    KASSERT(region!=NULL);
+    size_t pages = region->npages;
+    vaddr_t end_region = region->region_vaddr + pages*PAGE_SIZE;
+    size_t bytes_to_write;
+    bool to_write = true;
+
+    struct addrspace *as = proc_getas();
+
+    // get the end of actual size
+    size_t file_end_page = convert_to_pages(region->vnode_size);
+
+    // if we are in this function then the region should be non-NULL and the
+    // fault address should be within the bounds
+    KASSERT( (faultaddress >= region->region_vaddr) && (faultaddress <= end_region) );
+
+   // perform check to see if the frame is full of text or if the frame is to be partially populated
+    size_t faultaddress_page = convert_to_pages( faultaddress - region->region_vaddr );
+
+    if ( faultaddress_page < file_end_page )
+    {
+        bytes_to_write = PAGE_SIZE;
+    }
+    else if ( faultaddress_page == file_end_page )
+    {
+        // partially write the page
+        bytes_to_write = region->vnode_size - (faultaddress_page - 1)*PAGE_SIZE;
+    }
+    else
+    {
+        // return page as is nothing to write
+        to_write = false;
+    }
+    
+    // Free frame from mempool
+    paddr_t paddr = get_free_frame();
+    
+    if ( paddr == 0 )
+    {
+        return ENOMEM;
+    }
+
+    // Align the page 
+    faultaddress = faultaddress & PAGE_FRAME;
+
+    bool result = store_entry ( faultaddress, (pid_t) as, paddr, as_region_control(region));
+    if ( !result )
+    {
+        free_upages(paddr);
+        return ENOMEM;
+    }
+
+    // only if something has to be written to the frame
+    if ( to_write )
+    {
+        // read from file using the vnode and offset
+        struct iovec iov;
+        struct uio u;
+
+        iov.iov_ubase = (userptr_t) PADDR_TO_KVADDR(paddr);
+        iov.iov_len = bytes_to_write;
+
+        u.uio_iov = &iov;
+        u.uio_iovcnt = 1;
+        u.uio_resid = bytes_to_write;
+        u.uio_offset = region->vnode_offset;
+        // TODO Check if this is the correct mode
+        u.uio_segflg = UIO_USERSPACE;
+        u.uio_rw = UIO_READ;
+        u.uio_space = as;
+
+        // TODO make sure this is not a stack or heap
+        int result = VOP_READ(region->vn, &u);
+        if (result)
+        {
+            free_upages(paddr);
+            DEBUG(DB_VM, "READ FAiled in load frame\n");
+            return result;
         }
     }
     return 0;

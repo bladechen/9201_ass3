@@ -39,12 +39,15 @@
 #include <machine/vm.h>
 #include <types.h>
 #include <pagetable.h>
+#include <addrspace.h>
 #include <lib.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
+
+struct as_region_metadata ;
 
 // the underlying frame table status, the meta data of physical mem,
 enum E_FRAME_STATUS
@@ -105,6 +108,7 @@ void inc_frame_ref(paddr_t paddr);
 paddr_t dup_frame(paddr_t paddr);
 bool check_user_frame(paddr_t paddr);
 paddr_t get_free_frame(void);
+
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown(const struct tlbshootdown *);
