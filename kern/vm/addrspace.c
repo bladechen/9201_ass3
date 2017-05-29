@@ -466,9 +466,6 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
     KASSERT((as->mmap_start & (~PAGE_FRAME)) == 0);
     *addr = NULL;
 
-    /* int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  PF_R, */
-    /*                   PF_W, 0, MMAP); */
-
 
     int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  (writable|readable) ?PF_R:0,
                      writable? PF_W:0, 0, MMAP);
