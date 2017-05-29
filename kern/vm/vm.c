@@ -11,10 +11,6 @@
 #include <vm.h>
 #include <machine/tlb.h>
 #include <pagetable.h>
-/* #include <frametable.h> */
-/* #include <coreswap.h> */
-
-/* Place your page table functions here */
 
 
 
@@ -24,12 +20,6 @@ extern struct frame_entry* free_entry_list;
 void vm_bootstrap(void)
 {
 
-    /* vm_lock = lock_create("vm_lock"); */
-    /* if (lock == NULL) */
-    /* { */
-    /*     panic("vm lock create failed!\n"); */
-    /*  */
-    /* } */
 
     /* init_coreswap(); */
     DEBUG(DB_VM, "init_frametable ing....\n");
@@ -38,45 +28,10 @@ void vm_bootstrap(void)
     init_frametable();
 
     DEBUG(DB_VM, "init_frametable 0x%p finish\n", free_entry_list);
-    /* vaddr_t p = alloc_kpages(1); */
-    /* DEBUG(DB_VM, "alloc 0x%x\n", p); */
-    /*  */
-    /* vaddr_t x = alloc_kpages(1); */
-    /* DEBUG(DB_VM, "alloc 0x%x\n", x); */
-    /*  */
-    /*  */
-    /* free_kpages(p); */
-    /*  */
-    /* free_kpages(x); */
-    /*  */
-    /* x = alloc_kpages(1); */
-    /* DEBUG(DB_VM, "alloc 0x%x\n", x); */
-    /* free_kpages(x); */
-
-
-
     return;
 
 }
 
-
-/* static struct as_region_metadata* get_region(struct addrspace* space, vaddr_t faultaddress) */
-/* { */
-/*     KASSERT(space != NULL); */
-/*     KASSERT(space->list != NULL); */
-/*     KASSERT(!(faultaddress & OFFSETMASK)); */
-/*     struct as_region_metadata* cur = NULL; */
-/*     struct list_head* head = &(space->list->head); */
-/*     list_for_each_entry(cur, head, link) */
-/*     { */
-/*         if (cur->region_vaddr <= faultaddress && upper_addr(cur->region_vaddr, cur->npages) > faultaddress) */
-/*         { */
-/*             return cur; */
-/*         } */
-/*     } */
-/*     return NULL; */
-/*  */
-/* } */
 
 int vm_fault(int faulttype, vaddr_t faultaddress)
 {
@@ -87,21 +42,12 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
     if (curproc == NULL)
     {
-		/*
-		 * No process. This is probably a kernel fault early
-		 * in boot. Return EFAULT so as to panic instead of
-		 * getting into an infinite faulting loop.
-		 */
 		return EFAULT;
 	}
 
 	as = proc_getas();
 	if (as == NULL)
     {
-		/*
-		 * No address space set up. This is probably also a
-		 * kernel fault early in boot.
-		 */
 		return EFAULT;
 	}
     if (faultaddress == 0) // NULL pointer
@@ -154,9 +100,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
     if (ret == 0)
     {
         KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
-        int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0;
-
-        tlb_lo |= write_permission;
         tlb_force_write(tlb_hi, tlb_lo);
     }
     else
@@ -166,25 +109,11 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         {
             return ret;
         }
-        // implement logic to check the region for demand loading
-        //bool result = store_entry (faultaddress, pid, frame_addr, ctrl);
-        //if (!result)
-        //{
-        //    free_upages(frame_addr);
-        //    return ENOMEM;
-        //}
         ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
         if (ret != 0)
         {
            panic("what happen in get_tlb_entry");
         }
-        //KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
-        /* KASSERT(as->is_loading == 0); */
-
-        // I dont think we need this part TODO
-        /* int write_permission = (as->is_loading == 1) ? TLBLO_DIRTY:0; */
-
-        /* tlb_lo |= write_permission; */
         tlb_force_write(tlb_hi, tlb_lo);
 
     }

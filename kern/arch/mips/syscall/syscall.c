@@ -270,6 +270,7 @@ syscall(struct trapframe *tf)
             uint64_t offset;
             size_t length  = tf->tf_a0;
             int prot = tf->tf_a1;
+            kprintf("%d\n",tf->tf_a1);
             int fd = tf->tf_a2;
 
             int hi = 0 ;

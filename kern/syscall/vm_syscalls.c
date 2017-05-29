@@ -42,7 +42,6 @@ int sys_mmap(size_t length, int prot, int fd, off_t offset, int * retval)
 {
     struct openfile *file = NULL;
 
-    /* struct stat kbuf; */
 	int err;
 
 	err = filetable_get(curproc->p_filetable, fd, &file);

@@ -157,13 +157,13 @@ int               as_define_region(struct addrspace *as,
                                    size_t memsz, size_t filesz,
                                    int readable,
                                    int writeable,
-                                   int executable);
+                                   int executable, enum region_type);
 int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 
 int as_destroy_mmap(void* addr);
-int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages , int writable, int readable, void** addr);
+int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, int npages ,int readable,  int writable, void** addr);
 int as_define_heap(struct addrspace* as);
 int as_get_heap_break(struct addrspace* as, intptr_t amount);
 

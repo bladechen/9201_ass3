@@ -242,20 +242,15 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 				ph.p_type);
 			return ENOEXEC;
 		}
+        int region_type = (ph.p_flags & PF_X) ? CODE:DATA;
 
+        // perform demand loading
 		result = as_define_region(as,
 					  ph.p_vaddr, v, ph.p_offset,
                       ph.p_memsz, ph.p_filesz,
 					  ph.p_flags & PF_R,
 					  ph.p_flags & PF_W,
-					  ph.p_flags & PF_X);
-//result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
-		//		      ph.p_memsz, ph.p_filesz,
-		//		      ph.p_flags & PF_X);
-		//if (result) {
-		//	return result;
-		//}
-
+					  ph.p_flags & PF_X, region_type);
 		if (result) {
 			return result;
 		}
@@ -267,43 +262,10 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	}
 
 	/*
-	 * Now actually load each segment.
+	 * we are demand loading, no need to load any data from elf while lauch a new program
 	 */
 
-	for (i=0; i<eh.e_phnum; i++) {
-		off_t offset = eh.e_phoff + i*eh.e_phentsize;
-		uio_kinit(&iov, &ku, &ph, sizeof(ph), offset, UIO_READ);
-
-		result = VOP_READ(v, &ku);
-		if (result) {
-			return result;
-		}
-
-		if (ku.uio_resid != 0) {
-			/* short read; problem with executable? */
-			kprintf("ELF: short read on phdr - file truncated?\n");
-			return ENOEXEC;
-		}
-
-		switch (ph.p_type) {
-		    case PT_NULL: /* skip */ continue;
-		    case PT_PHDR: /* skip */ continue;
-		    case PT_MIPS_REGINFO: /* skip */ continue;
-		    case PT_LOAD: break;
-		    default:
-			kprintf("loadelf: unknown segment type %d\n",
-				ph.p_type);
-			return ENOEXEC;
-		}
-
-        (void)load_segment;
-		//result = load_segment(as, v, ph.p_offset, ph.p_vaddr,
-		//		      ph.p_memsz, ph.p_filesz,
-		//		      ph.p_flags & PF_X);
-		//if (result) {
-		//	return result;
-		//}
-	}
+    (void)load_segment;
 
 	result = as_complete_load(as);
 	if (result) {
