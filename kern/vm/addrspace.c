@@ -368,13 +368,16 @@ static void as_destroy_part_of_region(struct addrspace *as, struct as_region_met
 {
     KASSERT(as != NULL &&  region != NULL);
     vaddr_t start = region->region_vaddr;
-    vaddr_t end = region->region_vaddr  + (region->npages << 12);
+    vaddr_t end = region->region_vaddr  + ((((int)region->npages > npages)?(int)region->npages:npages) << 12);
     uint32_t tlb_hi, tlb_lo;
+    /* kprintf("age: %d\n", begin, npages); */
+    /* kprintf("delete start: %x, page: %d\n", begin, npages); */
     for (int i=0; i < npages; i++)
     {
         vaddr_t vaddr_del = begin + i*PAGE_SIZE;
         if (vaddr_del>= start && vaddr_del < end)
         {
+            /* kprintf("delete page entry: %x\n", vaddr_del); */
             int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
             if ( res != 0 )
             {
@@ -463,12 +466,12 @@ int as_define_mmap(struct addrspace* as, struct vnode* vn, off_t base_offset, in
     KASSERT((as->mmap_start & (~PAGE_FRAME)) == 0);
     *addr = NULL;
 
-    int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  PF_R,
-                      PF_W, 0, MMAP);
+    /* int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  PF_R, */
+    /*                   PF_W, 0, MMAP); */
 
 
-    /* int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  (writable|readable) ?PF_R:0, */
-    /*                  writable? PF_W:0, 0); */
+    int ret = as_define_region(as, as->mmap_start, vn, base_offset, npages << 12, npages << 12,  (writable|readable) ?PF_R:0,
+                     writable? PF_W:0, 0, MMAP);
     /*  */
     if (ret != 0)
     {
@@ -506,6 +509,7 @@ int as_get_heap_break(struct addrspace* as, intptr_t amount)
     {
         int inc_pages = amount >> 12;
         int heap_break = (tmp->region_vaddr + (tmp->npages << 12));
+        /* kprintf("heap start: %x, inc: %d\n", heap_break, inc_pages); */
         int ret = build_pagetable_link((pid_t)as, heap_break, inc_pages, as_region_control(tmp));
         if (ret != 0)
         {
@@ -515,7 +519,8 @@ int as_get_heap_break(struct addrspace* as, intptr_t amount)
         tmp->npages += (amount>>12);
         return heap_break;
 alloc_heap_fail:
-        as_destroy_part_of_region(as, tmp, heap_break, inc_pages);
+        /* kprintf("ret : %d\n", ret); */
+        as_destroy_part_of_region(as, tmp, heap_break, ret);
         return -1;
     }
 
@@ -537,21 +542,22 @@ static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, char
 {
     vaddr_t page_vaddr = 0;
 
-    size_t i = 0;
-    for (i=0;i<filepages;i++)
+    int i = 0;
+    for (i=1;i<=(int)filepages;i++)
     {
         paddr_t paddr = get_free_frame();
         if ( paddr == 0 )
         {
-            return ENOMEM;
+            return i;
         }
 
-        page_vaddr = vaddr + i*PAGE_SIZE;
+        page_vaddr = vaddr + (i - 1)*PAGE_SIZE;
         bool result = store_entry(page_vaddr, pid, paddr, control);
         if (!result)
         {
             free_upages(paddr);
-            return ENOMEM;
+            return i;
+            /* return ENOMEM; */
         }
     }
     return 0;
