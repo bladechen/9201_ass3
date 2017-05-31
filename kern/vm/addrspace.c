@@ -180,6 +180,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
     }
 
     *ret = newas;
+    tlb_flush();
     return 0;
 }
 
