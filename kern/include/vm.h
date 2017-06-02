@@ -62,7 +62,6 @@ struct frame_entry
 {
     paddr_t p_addr; // physical memory
 
-    void* owner; // same as the owner in the swap_page, if frame_entry belong to KERNEL, owner is set to be  NULL.
     int frame_status;
 
     volatile int locked; // when the corepage is allocating, this flag set to be true
@@ -70,6 +69,7 @@ struct frame_entry
     struct frame_entry* next_free;
 
     int reference_count;
+    void* owner;
     // K's additions
     bool pinned;
 };
@@ -105,9 +105,17 @@ void free_kpages(vaddr_t addr);
 void free_upages(paddr_t addr);
 void inc_frame_ref(paddr_t paddr);
 
+void set_frame_pinned(paddr_t addr);
+void unlock_frame(paddr_t);
+
 paddr_t dup_frame(paddr_t paddr);
 bool check_user_frame(paddr_t paddr);
 paddr_t get_free_frame(void);
+int do_frame_swapin(int swap_offset, paddr_t* paddr);
+
+
+void store_frame_owner(paddr_t paddr, void* owner);
+
 
 
 /* TLB shootdown handling called from interprocessor_interrupt */

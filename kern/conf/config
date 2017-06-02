@@ -776,7 +776,7 @@ echo -n ' files.mk'
     echo '# Debug vs. optimize'
     awk < $CONFTMP '
 	# Default: optimize.
-	BEGIN { debugflags="-O0"; }
+	BEGIN { debugflags="-Og"; }
 	$1=="debug" {
 	    debugflags="-g -Og";
 	}

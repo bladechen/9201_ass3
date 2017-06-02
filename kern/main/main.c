@@ -34,6 +34,7 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <kern/reboot.h>
+#include <coreswap.h>
 #include <kern/unistd.h>
 #include <lib.h>
 #include <spl.h>
@@ -137,6 +138,7 @@ boot(void)
 	vfs_setbootfs("emu0");
 
 	kheap_nextgeneration();
+    init_coreswap_file();
 
 	/*
 	 * Make sure various things aren't screwed up.

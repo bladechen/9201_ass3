@@ -58,6 +58,8 @@
  * temporarily instead.
  */
 #include "opt-noasserts.h"
+#undef OPT_NOASSERTS
+#define OPT_NOASSERTS 1
 
 #if OPT_NOASSERTS
 #define KASSERT(expr) ((void)(expr))

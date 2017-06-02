@@ -3,6 +3,7 @@
 #define __PAGETABLE_H__
 
 #include <types.h>
+#include <list.h>
 #include <synch.h>
 #include <mips/tlb.h>
 
@@ -62,11 +63,14 @@ struct hpt_entry
     // bits 2 - DIRTY
     // bits 3 - NCACHE
     // bits 4 - READ/WRITE for advanced
+    //
+    // bit 5 in swap or physical mem
 
     char control;
 
     // Next pointer for the entries
     struct hpt_entry *next;
+
 };
 
 // this initialises the page table
@@ -114,4 +118,6 @@ int get_tlb_entry(  vaddr_t vaddr , pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_l
 int init_hashtable( void );
 
 void test_pagetable( void );
+void set_page_swapout(struct hpt_entry* e, int swap_offset);
+void set_page_swapin(struct hpt_entry* e,  paddr_t paddr);
 #endif

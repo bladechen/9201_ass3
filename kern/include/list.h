@@ -1,9 +1,9 @@
 /*
-    copy from linux kernel, doubly linked list
+    copied from linux kernel, doubly linked list
 
-    basic list for intrusive list
+    modified for intrusive list, which used in kernel global open file table
 
-    Copyright (C) Karthik Sukumar
+    Copyright (C) Shenglong Chen
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -19,8 +19,8 @@
     along with this program; if not, write to the Free Software
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-Karthik Sukumar
-email: karthik.n.sukumar@gmail.com
+Shenglong Chen
+email: chenshenglong1990@gmail.com
 
 */
 
@@ -358,7 +358,29 @@ bool is_linked(struct list_head* );
 
 
 
-void link_detach1(void* entry, struct list* l); //  list * l is only for get the struct list* in void* entry
+// void link_detach1(void* entry, struct list* l); //  list * l is only for get the struct list* in void* entry
 // void link_detach2(void* entry, int offset); //  lis
 
+
+
+
+
+
+
+
 #endif
+
+
+// struct  list my_list;
+// int main()
+// {
+//     INIT_LIST_HEAD(&(my_list.head));
+//     my_list.offset = offsetof(struct entry , object);
+//
+    /* struct entry* p, v; */
+    /* attach(&my_list, v); */
+    /* dettach(&my_list, v); */
+    /* void* s = p + 1; */
+    /* size_t ss = (size_t) p + 1; */
+//     return 0;
+// }

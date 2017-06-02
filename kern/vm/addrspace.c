@@ -42,6 +42,7 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <proc.h>
+#include <coreswap.h>
 
 #include <elf.h>
 #include <uio.h>
@@ -108,17 +109,17 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
     uint32_t tlb_hi,tlb_lo;
     size_t i = 0;
     /* size_t j = 0; */
+    int spl = splhigh();
     for (i=0;i<region->npages;i++)
     {
         vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
-        int result = get_tlb_entry(vaddr,oldpid, &tlb_hi, &tlb_lo);
+        int result = force_get_tlb(vaddr,oldpid, &tlb_hi, &tlb_lo);
         if ( result != 0)
         {
             // father not allocate page for that vaddr, may be in bss/data . static int a[100000]
             continue;
         }
         paddr_t paddr = tlb_lo & ENTRYMASK;
-        inc_frame_ref(paddr);
 
         // Store new entry in the Page table
         // no matter writable or not, set dirty bit to 0
@@ -128,12 +129,15 @@ static int alloc_and_copy_frame(struct addrspace *newas, struct as_region_metada
             free_upages(paddr);
             /* as_destroy_region(newas, region); */
             DEBUG(DB_VM, "i dont have enough pages\n");
+            splx(spl);
             // TODO if this fails then something has to be done
             return -1;
         }
         // set father also readonly
-        reset_mask(vaddr, oldpid, DIRTYMASK);
+        if (as_region_control(region) & DIRTYMASK)
+            reset_mask(vaddr, oldpid, DIRTYMASK);
     }
+    splx(spl);
     return 0;
 }
 
@@ -380,12 +384,16 @@ static void as_destroy_part_of_region(struct addrspace *as, struct as_region_met
         {
             /* kprintf("delete page entry: %x\n", vaddr_del); */
             int res = get_tlb_entry(vaddr_del,(pid_t) as, &tlb_hi, &tlb_lo);
-            if ( res != 0 )
+            if ( res < 0 )
             {
                 continue;
             }
+
             tlb_lo = tlb_lo & ENTRYMASK;
-            free_upages(tlb_lo);
+            if (res == 0)
+                free_upages(tlb_lo);
+            else
+                free_swap(tlb_lo);
             KASSERT(0 == remove_page_entry(vaddr_del, (pid_t)as));
         }
     }
@@ -411,7 +419,7 @@ static void as_flush_region(struct addrspace *as, struct as_region_metadata* reg
         for (int i=0; i<(int)region->npages;i++)
         {
             vaddr_t vaddr = region->region_vaddr + i*PAGE_SIZE;
-            int result = get_tlb_entry(vaddr, (pid_t)as, &tlb_hi, &tlb_lo);
+            int result = force_get_tlb(vaddr, (pid_t)as, &tlb_hi, &tlb_lo);
             if ( result != 0)
             {
                 continue;
@@ -557,6 +565,7 @@ static int build_pagetable_link(pid_t pid, vaddr_t vaddr, size_t filepages, char
             return i;
             /* return ENOMEM; */
         }
+        unlock_frame(paddr);
     }
     return 0;
 }
@@ -628,6 +637,7 @@ int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
     /* kprintf("write flag: %d, fault: 0x%x, file off: %x, size bytes: %d, mem off:%x \n",to_write, faultaddress, start_file_off, bytes_to_write, start_mem_off); */
 
     paddr_t paddr = get_free_frame();
+    /* kprintf("load frame: paddr, %x  vaddr, %x\n", paddr, faultaddress); */
 
     if ( paddr == 0 )
     {
@@ -656,6 +666,36 @@ int load_frame(struct as_region_metadata *region, vaddr_t faultaddress)
             DEBUG(DB_VM, "READ FAiled in load frame\n");
             return result;
         }
+    }
+    /* set_frame_owner(); */
+    unlock_frame(paddr);
+    set_frame_pinned(paddr);
+    return 0;
+}
+
+int force_get_tlb(vaddr_t vaddr, pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_lo)
+{
+    int result = get_tlb_entry(vaddr, pid, tlb_hi, tlb_lo);
+    if (result == 0)
+    {
+        return 0;
+
+    }
+    else if (result < 0)
+    {
+        return -1;
+    }
+    else
+    {
+        // page is in swap, do swap in
+        paddr_t paddr = 0;
+        result = do_frame_swapin(*tlb_lo, &paddr);
+        if (result != 0 )
+        {
+            return -1;
+        }
+        unlock_frame((paddr) & PAGE_FRAME);
+        /* set_page_swapin(vaddr, pid, paddr); */
     }
     return 0;
 }

@@ -348,6 +348,7 @@ optofffile dumbvm   vm/addrspace.c
 optofffile dumbvm   vm/pagetable.c
 optofffile dumbvm   vm/frametable.c
 optofffile dumbvm   vm/vm.c
+optofffile dumbvm   vm/coreswap.c
 optofffile dumbvm   vm/hash.c
 
 #

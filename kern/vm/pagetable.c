@@ -152,6 +152,9 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
     if ( !is_colliding( vaddr , pid ) )
     {
         store_in_table(vaddr, pid, paddr, control, &(hpt->hpt_entry[index]) );
+        store_frame_owner(paddr,  &(hpt->hpt_entry[index]));
+
+        /* append_page2frame(&(hpt_ent->next_page), hpt_ent->paddr); */
         #ifdef DEBUGLOAD
         hpt->load++;
         #endif
@@ -166,7 +169,9 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
         struct hpt_entry *nextchained = hpt->hpt_entry[index].next;
 
         // Get free entry from pool
+        spinlock_release(hpt->hpt_lock);
         struct hpt_entry *free = get_free_entry();
+        spinlock_acquire(hpt->hpt_lock);
 
         // TODO When there are no more free nodes
         if ( free == NULL )
@@ -177,6 +182,8 @@ bool store_entry( vaddr_t vaddr , pid_t pid, paddr_t paddr , char control )
         }
         // Store in table
         store_in_table( vaddr, pid, paddr, control, free );
+        store_frame_owner(paddr, free);
+        /* append_page2frame(&(hpt_ent->next_page), hpt_ent->paddr); */
         // link in the next chain
         current->next = free;
         // What if free is NULL
@@ -212,6 +219,7 @@ int remove_page_entry( vaddr_t vaddr, pid_t pid )
     {
         if (current->next == NULL)
         {
+
             set_page_zero(current);
 
 #ifdef DEBUGLOAD
@@ -316,12 +324,6 @@ static struct hpt_entry* get_page( vaddr_t vaddr , pid_t pid )
     /* return current; */
 }
 
-/* // TODO */
-/* // Allocate a page and return the index */
-/* struct hpt_entry* allocate_page( void ) */
-/* { */
-/*     return NULL; */
-/* } */
 
 // WARNING this dosent have a lock the caller should have a lock around this!!!
 static bool is_equal(vaddr_t vaddr ,pid_t pid , struct hpt_entry* current )
@@ -442,6 +444,7 @@ void set_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
     vaddr = vaddr & ENTRYMASK;
     spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
+    KASSERT((pte->control & mask) == 0);
 
     KASSERT(pte != NULL);
     pte->control |= mask;
@@ -456,6 +459,7 @@ void reset_mask( vaddr_t vaddr , pid_t pid , uint32_t mask)
     struct hpt_entry *pte = get_page(vaddr, pid);
 
     KASSERT(pte != NULL);
+    /* KASSERT((pte->control & mask) ); */
     pte->control &= (~mask);
     spinlock_release(hpt->hpt_lock);
 }
@@ -468,12 +472,21 @@ int get_tlb_entry(vaddr_t vaddr, pid_t pid , uint32_t* tlb_hi, uint32_t* tlb_lo 
     vaddr = vaddr & ENTRYMASK;
     /* KASSERT((vaddr & (~ENTRYMASK)) == ) */
     KASSERT(tlb_hi != NULL && tlb_lo != NULL);
+    *tlb_hi = 0;
+    *tlb_lo = 0;
     spinlock_acquire(hpt->hpt_lock);
     struct hpt_entry *pte = get_page(vaddr, pid);
     if (pte == NULL)
     {
         spinlock_release(hpt->hpt_lock);
         return -1;
+    }
+    // TODO
+    if (pte->control & SWAPMASK)
+    {
+        *tlb_lo = pte->paddr;
+        spinlock_release(hpt->hpt_lock);
+        return 1; //
     }
 
     // Construct the hi entry for the tlb
@@ -495,10 +508,40 @@ int update_page_entry(vaddr_t vaddr , pid_t pid, paddr_t paddr, char control_fla
         return -1;
     }
 
-    pte->control = control_flag;
+    if (control_flag != 0)
+        pte->control = control_flag;
     pte->paddr = paddr;
+    store_frame_owner(paddr, pte);
+
     spinlock_release(hpt->hpt_lock);
     return 0;
+}
+void set_page_swapout(struct hpt_entry* pte, int swap_offset)
+{
+    spinlock_acquire(hpt->hpt_lock);
+    /* kprintf("set_page_swapout: %p, paddr: %x\n", pte,  pte->paddr); */
+
+    pte->paddr = swap_offset;
+    KASSERT(!(pte->control & SWAPMASK));
+    pte->control |= SWAPMASK;
+
+    spinlock_release(hpt->hpt_lock);
+
+    return;
+}
+
+void set_page_swapin(struct hpt_entry*pte,  paddr_t paddr)
+{
+    spinlock_acquire(hpt->hpt_lock);
+
+    pte->paddr = paddr;
+    KASSERT((pte->control & SWAPMASK));
+    pte->control &= ~SWAPMASK;
+
+    spinlock_release(hpt->hpt_lock);
+
+
+    return;
 }
 
 void test_pagetable( void )

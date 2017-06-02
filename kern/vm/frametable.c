@@ -1,10 +1,12 @@
 #include <kern/types.h>
 #include <types.h>
+#include <current.h>
 #include <kern/errno.h>
 #include <lib.h>
 #include <thread.h>
 #include <clock.h>
 #include <vm.h>
+#include <coreswap.h>
 #include <addrspace.h>
 
 /* Place your frametable data-structures here
@@ -23,10 +25,15 @@ struct frame_entry* free_entry_list = NULL;
 int frametable_size = 0; // max index of frame_table
 
 paddr_t firstfree_addr = 0;
+
+
+static int clock_index = 0;
+
 static struct spinlock frame_lock = SPINLOCK_INITIALIZER;
 
 static struct spinlock free_frame_list_lock = SPINLOCK_INITIALIZER;
 
+static struct frame_entry* alloc_upages(void);
 static void as_zero_region(paddr_t paddr, unsigned npages)
 {
 	bzero((void *)PADDR_TO_KVADDR(paddr), npages * PAGE_SIZE);
@@ -44,9 +51,9 @@ static bool is_user_frame(struct frame_entry * frame)
 {
     KASSERT(frame != NULL);
     return (frame ->frame_status == USER_FRAME
-            && frame->owner == NULL
+            && frame->owner != NULL
             && frame->next_free == NULL
-            &&frame-> locked == 0
+            /* &&frame-> locked == 0 */
             && frame->reference_count >= 1);
 }
 
@@ -84,6 +91,7 @@ static void free_frame_entry(struct frame_entry* entry)
     entry->owner = NULL;
     entry->frame_status = FREE_FRAME;
     entry->locked  = 0;
+    entry->pinned = 0;
     entry->next_free = free_entry_list;
     free_entry_list = entry;
 
@@ -109,10 +117,10 @@ static void free_frame_entry(struct frame_entry* entry)
 static struct frame_entry* find_free_frame(unsigned int npages)
 {
     KASSERT(npages == 1);
-    spinlock_acquire(&free_frame_list_lock);
+    /* spinlock_acquire(&free_frame_list_lock); */
     if (free_entry_list == NULL)
     {
-        spinlock_release(&free_frame_list_lock);
+        /* spinlock_release(&free_frame_list_lock); */
         return NULL;
 
     }
@@ -120,19 +128,144 @@ static struct frame_entry* find_free_frame(unsigned int npages)
 
     free_entry_list = e->next_free;
     free_list_count--;
-    spinlock_release(&free_frame_list_lock);
+    /* spinlock_release(&free_frame_list_lock); */
     return e;
+}
+int do_frame_swapin(int swap_offset, paddr_t* paddr)
+{
+    spinlock_acquire(&frame_lock);
+    struct frame_entry* e = alloc_upages();
+    if ( e == NULL)
+    {
+        spinlock_release(&frame_lock);
+        return -1;
+    }
+    else
+    {
+        spinlock_release(&frame_lock);
+        KASSERT(0 == swapin_frame(e, swap_offset));
+        spinlock_acquire(&frame_lock);
+        *paddr = e->p_addr;
+    }
+    spinlock_release(&frame_lock);
+    return 0;
+}
+static struct frame_entry* do_frame_swap()
+{
+    spinlock_do_i_hold(&frame_lock);
+    struct frame_entry* ret = NULL;
+    while (1)
+    {
+        struct frame_entry* tmp = &(frame_table[clock_index]);
+
+        KASSERT(tmp->frame_status != FREE_FRAME);
+        if (tmp->frame_status == KERNEL_FRAME)
+        {
+			clock_index ++;
+            continue;
+        }
+        /* kprintf ("%x: ref %d, pin: %d, lock: %d, status %d \n", */
+                 /* tmp->p_addr, tmp->reference_count, */
+                 /* tmp->pinned, tmp->locked, tmp->frame_status); */
+        // find frame, to simplify the problem, we don't deal with the frame shared by several proc
+        if (tmp->pinned == 0 && tmp->frame_status == USER_FRAME && tmp->locked == 0 && tmp->reference_count == 1)
+        {
+            tmp->locked = 1;
+            spinlock_release(&frame_lock);
+            int r = swapout_frame(tmp);
+            spinlock_acquire(&frame_lock);
+            tmp->locked = 0;
+            if (r != 0)
+            {
+                return NULL;
+            }
+            ret = tmp;
+            break;
+        }
+        tmp->pinned = 0;
+        // TODO maybe need to invalid the page table?, i think we don't need? tlb_flush, then every vm_fault will trigger page fault
+        /* list_for_each_safe(current, tmp_head, &(tmp->pageentry_list.head)) */
+        /* { */
+        /*     set_page_invalid(); // invalid the page for further  */
+        /*  */
+        /* } */
+
+
+        clock_index++;
+        if (clock_index >= frametable_size)
+        {
+            clock_index = 0;
+        }
+    }
+    tlb_flush(); // we should flush tlb, because we change something in page table
+    return ret;
+}
+
+void unlock_frame(paddr_t paddr)
+{
+    KASSERT(paddr % PAGE_SIZE == 0);
+
+    int frametable_index = paddr_2_frametable_idx(paddr);
+    spinlock_acquire(&frame_lock);
+    KASSERT(is_user_frame(frame_table + frametable_index));
+    KASSERT(frame_table[frametable_index].locked == 1);
+    frame_table[frametable_index].locked = 0 ;
+    spinlock_release(&frame_lock);
+    return;
+}
+
+
+void store_frame_owner(paddr_t paddr, void* owner)
+{
+	KASSERT(paddr % PAGE_SIZE == 0);
+
+    int frametable_index = paddr_2_frametable_idx(paddr);
+    spinlock_acquire(&frame_lock);
+	KASSERT(frame_table[frametable_index].owner != owner);
+    /* if (owner =) */
+	if (frame_table[frametable_index].owner == NULL)
+    {
+        /* KASSERT(((struct hpt_entry *)owner)->paddr == paddr); */
+		frame_table[frametable_index].owner = owner;
+    }
+	else
+		frame_table[frametable_index].reference_count ++;
+
+    /* kprintf("frame %x origion owner: %p->%x, owner: %p->%x, cur thread: %p\n", paddr, frame_table[frametable_index].owner , ((struct hpt_entry *)frame_table[frametable_index].owner)->paddr, owner, ((struct hpt_entry *)owner)->paddr, curthread); */
+    spinlock_release(&frame_lock);
+    return;
+
+
+}
+void set_frame_pinned(paddr_t paddr)
+{
+    KASSERT(paddr % PAGE_SIZE == 0);
+
+    int frametable_index = paddr_2_frametable_idx(paddr);
+    spinlock_acquire(&frame_lock);
+    KASSERT(is_user_frame(frame_table + frametable_index));
+    frame_table[frametable_index].pinned = 1;
+    spinlock_release(&frame_lock);
+    return;
 }
 
 static struct frame_entry* find_one_available_frame()
 {
+    /* spinlock_acquire(&frame_lock); */
     struct frame_entry* ret = find_free_frame(1);
 
     if (ret != NULL)
     {
+        /* spinlock_release(&frame_lock); */
         return ret;
     }
-    return NULL;
+
+	/* kprintf("go into swapping\n"); */
+    ret = do_frame_swap(); // should be one page
+	/* kprintf("go out swapping %x\n", ret->p_addr); */
+    /* spinlock_release(&frame_table); */
+
+    return ret;
 }
 
 // exported
@@ -156,6 +289,7 @@ vaddr_t alloc_kpages(unsigned int npages)
     {
         KASSERT(npages == 1);
         spinlock_acquire(&frame_lock);
+        DEBUG(DB_VM, " allocating kpages\n");
         struct frame_entry*  tmp = find_one_available_frame();
         if (tmp == NULL)
         {
@@ -171,34 +305,36 @@ vaddr_t alloc_kpages(unsigned int npages)
     }
 }
 
-static vaddr_t alloc_upages()
+static struct frame_entry* alloc_upages(void)
 {
     bool lock = spinlock_do_i_hold(&frame_lock);
     if (!lock) spinlock_acquire(&frame_lock);
+    /* DEBUG(DB_VM, " allocating upages\n"); */
     struct frame_entry*  tmp = find_one_available_frame();
     if (tmp == NULL)
     {
-        spinlock_release(&frame_lock);
-        return 0;
+        if (!lock) spinlock_release(&frame_lock);
+        return  NULL;
     }
     clear_frame(tmp, USER_FRAME);
     tmp->reference_count = 1;
+    tmp->locked = 1;
     if (!lock) spinlock_release(&frame_lock);
 
     /* DEBUG(DB_VM, "alloc_kpages via vm %x\n", tmp->p_addr); */
-    return PADDR_TO_KVADDR(tmp->p_addr);
+    return tmp;
 }
 
 // Returns a free frame from the frame table
 paddr_t get_free_frame(void)
 {
 
-    vaddr_t addr = alloc_upages();
-    if (addr == 0)
+    struct  frame_entry* e = alloc_upages();
+    if (e == 0)
     {
         return 0;
     }
-    return KVADDR_TO_PADDR(addr);
+    return e->p_addr;
 }
 
 void inc_frame_ref(paddr_t paddr)
@@ -225,18 +361,21 @@ paddr_t dup_frame(paddr_t paddr)
     }
     else
     {
+        frame_table[frametable_index].locked = 1;
         frame_table[frametable_index].reference_count -- ;
-        vaddr_t v = alloc_upages();
-        if (v == 0)
+        struct frame_entry* e = alloc_upages();
+        /* vaddr_t v = alloc_upages(); */
+        if (e == NULL)
         {
-            KASSERT(v != 0);
+            frame_table[frametable_index].locked = 0;
             spinlock_release(&frame_lock);
             return 0;
         }
-        memcpy((void*)v,(void*)PADDR_TO_KVADDR(paddr), PAGE_SIZE);
+        memcpy((void*)PADDR_TO_KVADDR(e->p_addr),(void*)PADDR_TO_KVADDR(paddr), PAGE_SIZE);
+        frame_table[frametable_index].locked = 0;
         spinlock_release(&frame_lock);
 
-        return KVADDR_TO_PADDR(v);
+        return e->p_addr;
     }
 }
 

@@ -181,6 +181,7 @@ void as_destroy_region(struct addrspace *as, struct as_region_metadata *to_del);
 
 char as_region_control(struct as_region_metadata* region);
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
+int force_get_tlb(vaddr_t vaddr, pid_t pid, uint32_t* tlb_hi, uint32_t* tlb_lo);
 
 
 

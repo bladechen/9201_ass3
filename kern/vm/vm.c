@@ -1,5 +1,6 @@
 #include <types.h>
 #include <spl.h>
+#include <coreswap.h>
 #include <elf.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -24,8 +25,10 @@ void vm_bootstrap(void)
     /* init_coreswap(); */
     DEBUG(DB_VM, "init_frametable ing....\n");
     init_page_table();
-    test_pagetable();
+    init_coreswap();
+    /* test_pagetable(); */
     init_frametable();
+
 
     DEBUG(DB_VM, "init_frametable 0x%p finish\n", free_entry_list);
     return;
@@ -73,7 +76,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         // this region is writable
         else // copy on write, readonly occur on writable region
         {
-            KASSERT(0 == get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo));
+            //FIXME
+            KASSERT(0 == force_get_tlb(faultaddress, pid, &tlb_hi, &tlb_lo));
             paddr_t old_frame = tlb_lo&PAGE_FRAME;
             paddr_t frame = dup_frame(old_frame);
             if (frame == 0)
@@ -83,12 +87,15 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
             }
             else if (frame == old_frame)
             {
+                set_frame_pinned(frame);
                 set_mask(faultaddress, pid, DIRTYMASK);
                 tlb_flush();
             }
             else
             {
                 update_page_entry(faultaddress, pid, frame, as_region_control(region));
+                set_frame_pinned(frame);
+                unlock_frame(frame);
                 tlb_flush();
 
             }
@@ -96,11 +103,20 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         }
     }
 
-    int ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+    int ret = force_get_tlb(faultaddress, pid, &tlb_hi, &tlb_lo);
     if (ret == 0)
     {
+        int spl = splhigh();
+        ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+        if (ret != 0)
+        {
+            splx(spl);
+            return 0;
+        }
         KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
+        set_frame_pinned(tlb_lo & PAGE_FRAME);
         tlb_force_write(tlb_hi, tlb_lo);
+        splx(spl);
     }
     else
     {
@@ -109,12 +125,17 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
         {
             return ret;
         }
-        ret = get_tlb_entry(faultaddress, pid, &tlb_hi, &tlb_lo);
+        int spl = splhigh();
+        ret = get_tlb_entry(faultaddress , pid, &tlb_hi, &tlb_lo);
         if (ret != 0)
         {
-           panic("what happen in get_tlb_entry");
+            splx(spl);
+            return 0;
         }
+        KASSERT(check_user_frame(tlb_lo & PAGE_FRAME));
+        set_frame_pinned(tlb_lo & PAGE_FRAME);
         tlb_force_write(tlb_hi, tlb_lo);
+        splx(spl);
 
     }
     return 0;
